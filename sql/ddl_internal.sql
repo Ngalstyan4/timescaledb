@@ -17,15 +17,17 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.drop_chunks_impl(
     table_name  NAME = NULL,
     schema_name NAME = NULL,
     cascade  BOOLEAN = FALSE,
-    truncate_before  BOOLEAN = FALSE
+    truncate_before  BOOLEAN = FALSE,
+    dry_run BOOLEAN = FALSE
 )
-    RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
+    RETURNS SETOF TEXT LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
 DECLARE
     chunk_row _timescaledb_catalog.chunk;
     cascade_mod TEXT = '';
     exist_count INT = 0;
 BEGIN
+
     IF older_than_time IS NULL AND table_name IS NULL AND schema_name IS NULL THEN
         RAISE 'Cannot have all 3 arguments to drop_chunks_older_than be NULL';
     END IF;
@@ -47,6 +49,27 @@ BEGIN
         END IF;
     END IF;
 
+    IF dry_run THEN
+        FOR chunk_row IN SELECT *
+            FROM _timescaledb_catalog.chunk c
+            INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = c.hypertable_id)
+            INNER JOIN _timescaledb_internal.dimension_get_time(h.id) time_dimension ON(true)
+            INNER JOIN _timescaledb_catalog.dimension_slice ds
+                ON (ds.dimension_id = time_dimension.id)
+            INNER JOIN _timescaledb_catalog.chunk_constraint cc
+                ON (cc.dimension_slice_id = ds.id AND cc.chunk_id = c.id)
+            WHERE (older_than_time IS NULL OR ds.range_end <= older_than_time) -- Q:: can older_than_time be null here? it is checked on line 29
+            AND (drop_chunks_impl.schema_name IS NULL OR h.schema_name = drop_chunks_impl.schema_name)
+            AND (drop_chunks_impl.table_name IS NULL OR h.table_name = drop_chunks_impl.table_name)
+        LOOP
+            RETURN NEXT format(
+                '%I.%I', chunk_row.schema_name, chunk_row.table_name
+            );
+        END LOOP;
+        RETURN;
+        RAISE NOTICE 'for some reason I got here :/';
+
+    END IF;
     FOR chunk_row IN SELECT *
         FROM _timescaledb_catalog.chunk c
         INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = c.hypertable_id)
@@ -55,7 +78,7 @@ BEGIN
             ON (ds.dimension_id = time_dimension.id)
         INNER JOIN _timescaledb_catalog.chunk_constraint cc
             ON (cc.dimension_slice_id = ds.id AND cc.chunk_id = c.id)
-        WHERE (older_than_time IS NULL OR ds.range_end <= older_than_time)
+        WHERE (older_than_time IS NULL OR ds.range_end <= older_than_time) -- Q:: can older_than_time be null here? it is checked on line 29
         AND (drop_chunks_impl.schema_name IS NULL OR h.schema_name = drop_chunks_impl.schema_name)
         AND (drop_chunks_impl.table_name IS NULL OR h.table_name = drop_chunks_impl.table_name)
     LOOP
@@ -66,6 +89,13 @@ BEGIN
                 $$, chunk_row.schema_name, chunk_row.table_name, cascade_mod
             );
         END IF;
+
+        -- EXECUTE format(
+        --         $$
+        --         COPY (SELECT * From %I.%I %s) To '/tmp/test.csv' With CSV DELIMITER ',';
+        --         $$, chunk_row.schema_name, chunk_row.table_name, cascade_mod
+        -- );
+        -- RETURN chunk_rows;
         EXECUTE format(
                 $$
                 DROP TABLE %I.%I %s

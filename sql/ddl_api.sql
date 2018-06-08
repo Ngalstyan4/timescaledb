@@ -52,9 +52,10 @@ CREATE OR REPLACE FUNCTION drop_chunks(
     older_than anyelement,
     table_name  NAME = NULL,
     schema_name NAME = NULL,
-    cascade  BOOLEAN = FALSE
+    cascade  BOOLEAN = FALSE,
+    dry_run  BOOLEAN = FALSE
 )
-    RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
+    RETURNS SETOF TEXT LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
 DECLARE
     older_than_internal BIGINT;
@@ -62,10 +63,14 @@ BEGIN
     IF older_than IS NULL THEN
         RAISE 'The timestamp provided to drop_chunks cannot be null';
     END IF;
+    RAISE NOTICE 'dry_run_ANY_ELEM = %',dry_run;
 
     PERFORM  _timescaledb_internal.drop_chunks_type_check(pg_typeof(older_than), table_name, schema_name);
     SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_internal;
-    PERFORM _timescaledb_internal.drop_chunks_impl(older_than_internal, table_name, schema_name, cascade);
+    -- I named the last argument just because I wanted to name the argument before. ANd I named the argument before because it was omitted previously
+    -- this makes it clear what the false there means
+    RETURN QUERY SELECT _timescaledb_internal.drop_chunks_impl(older_than_internal, table_name, schema_name, cascade, truncate_before => FALSE, dry_run => dry_run);
+    RETURN;
 END
 $BODY$;
 
@@ -74,9 +79,10 @@ CREATE OR REPLACE FUNCTION drop_chunks(
     older_than  INTERVAL,
     table_name  NAME = NULL,
     schema_name NAME = NULL,
-    cascade BOOLEAN = false
+    cascade  BOOLEAN = false,
+    dry_run  BOOLEAN = FALSE
 )
-    RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
+    RETURNS SETOF TEXT LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
 DECLARE
     time_type REGTYPE;
@@ -98,13 +104,14 @@ BEGIN
             RAISE EXCEPTION 'Cannot use drop_chunks on multiple tables with different time types';
     END;
 
+    RAISE NOTICE 'dry_run_INTERVAL = %',dry_run;
 
     IF time_type = 'TIMESTAMP'::regtype THEN
-        PERFORM drop_chunks((now() - older_than)::timestamp, table_name, schema_name, cascade);
+        PERFORM drop_chunks((now() - older_than)::timestamp, table_name, schema_name, cascade, dry_run);
     ELSIF time_type = 'DATE'::regtype THEN
-        PERFORM drop_chunks((now() - older_than)::date, table_name, schema_name, cascade);
+        PERFORM drop_chunks((now() - older_than)::date, table_name, schema_name, cascade, dry_run);
     ELSIF time_type = 'TIMESTAMPTZ'::regtype THEN
-        PERFORM drop_chunks(now() - older_than, table_name, schema_name, cascade);
+        PERFORM drop_chunks(now() - older_than, table_name, schema_name, cascade, dry_run);
     ELSE
         RAISE 'Can only use drop_chunks with an INTERVAL for TIMESTAMP, TIMESTAMPTZ, and DATE types';
     END IF;
