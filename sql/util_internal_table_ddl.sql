@@ -156,3 +156,54 @@ BEGIN
     RETURN ret;
 END
 $BODY$;
+
+-- Outputs all the rows from the SETOF chunk-tables given as argument
+-- Takes the output of drop_chunks (in dry run mode) as an input TODO: may change
+
+-- NOTE: The client is responsible to pass an array of correctly escaped table names
+CREATE OR REPLACE FUNCTION _timescaledb_internal.get_rows_from_tables(
+    table_names TEXT[],
+    table_type  anyelement
+)
+    RETURNS SETOF anyelement LANGUAGE PLPGSQL VOLATILE AS
+    $BODY$ 
+    DECLARE
+        t TEXT;
+    BEGIN
+        FOREACH t IN ARRAY table_names
+        LOOP
+            RETURN QUERY EXECUTE format('SELECT * from %s',t);
+        END LOOP;
+        RETURN;
+    END
+    $BODY$;
+
+-- Outputs all the rows from the SETOF chunk-tables given as argument into a CSV file at the 
+-- given path
+-- Takes the output of drop_chunks (in dry run mode) as an input TODO: may change
+
+-- NOTE: The client is responsible to pass an array of correctly escaped table names
+CREATE OR REPLACE FUNCTION _timescaledb_internal.tables_to_csv(
+    table_names TEXT[],
+    csv_path    TEXT
+)
+    RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
+    $BODY$ 
+    DECLARE
+        len INT;
+        i INT;
+        query TEXT = '';
+    BEGIN
+        len := array_upper(table_names, 1);
+        FOR i IN 1..len 
+        LOOP
+            query := CONCAT(query, format('(SELECT * from %s)',table_names[i]));
+            IF i != (len) THEN
+                query := CONCAT(query, ' UNION ALL ');
+            END IF;
+           -- COPY (EXECUTE format('SELECT * from %s',t)) TO format('%',csv_path) WITH DELIMITER ',';
+                           --COPY (SELECT * from %s) TO '%s' WITH CSV
+        END LOOP;
+        EXECUTE (format('COPY (%s) TO ''%s'' WITH CSV', query, csv_path));
+    END
+    $BODY$;

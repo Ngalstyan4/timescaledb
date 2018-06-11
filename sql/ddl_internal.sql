@@ -49,27 +49,6 @@ BEGIN
         END IF;
     END IF;
 
-    IF dry_run THEN
-        FOR chunk_row IN SELECT *
-            FROM _timescaledb_catalog.chunk c
-            INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = c.hypertable_id)
-            INNER JOIN _timescaledb_internal.dimension_get_time(h.id) time_dimension ON(true)
-            INNER JOIN _timescaledb_catalog.dimension_slice ds
-                ON (ds.dimension_id = time_dimension.id)
-            INNER JOIN _timescaledb_catalog.chunk_constraint cc
-                ON (cc.dimension_slice_id = ds.id AND cc.chunk_id = c.id)
-            WHERE (older_than_time IS NULL OR ds.range_end <= older_than_time) -- Q:: can older_than_time be null here? it is checked on line 29
-            AND (drop_chunks_impl.schema_name IS NULL OR h.schema_name = drop_chunks_impl.schema_name)
-            AND (drop_chunks_impl.table_name IS NULL OR h.table_name = drop_chunks_impl.table_name)
-        LOOP
-            RETURN NEXT format(
-                '%I.%I', chunk_row.schema_name, chunk_row.table_name
-            );
-        END LOOP;
-        RETURN;
-        RAISE NOTICE 'for some reason I got here :/';
-
-    END IF;
     FOR chunk_row IN SELECT *
         FROM _timescaledb_catalog.chunk c
         INNER JOIN _timescaledb_catalog.hypertable h ON (h.id = c.hypertable_id)
@@ -89,19 +68,25 @@ BEGIN
                 $$, chunk_row.schema_name, chunk_row.table_name, cascade_mod
             );
         END IF;
-
+        
+        RETURN NEXT format(
+            '%I.%I', chunk_row.schema_name, chunk_row.table_name
+        );
         -- EXECUTE format(
         --         $$
         --         COPY (SELECT * From %I.%I %s) To '/tmp/test.csv' With CSV DELIMITER ',';
         --         $$, chunk_row.schema_name, chunk_row.table_name, cascade_mod
         -- );
         -- RETURN chunk_rows;
-        EXECUTE format(
-                $$
-                DROP TABLE %I.%I %s
-                $$, chunk_row.schema_name, chunk_row.table_name, cascade_mod
-        );
+        IF NOT dry_run THEN
+            EXECUTE format(
+                    $$
+                    DROP TABLE %I.%I %s
+                    $$, chunk_row.schema_name, chunk_row.table_name, cascade_mod
+            );
+        END IF;
     END LOOP;
+    RETURN;
 END
 $BODY$;
 

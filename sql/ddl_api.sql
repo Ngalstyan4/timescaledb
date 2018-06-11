@@ -63,7 +63,6 @@ BEGIN
     IF older_than IS NULL THEN
         RAISE 'The timestamp provided to drop_chunks cannot be null';
     END IF;
-    RAISE NOTICE 'dry_run_ANY_ELEM = %',dry_run;
 
     PERFORM  _timescaledb_internal.drop_chunks_type_check(pg_typeof(older_than), table_name, schema_name);
     SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_internal;
@@ -104,7 +103,6 @@ BEGIN
             RAISE EXCEPTION 'Cannot use drop_chunks on multiple tables with different time types';
     END;
 
-    RAISE NOTICE 'dry_run_INTERVAL = %',dry_run;
 
     IF time_type = 'TIMESTAMP'::regtype THEN
         PERFORM drop_chunks((now() - older_than)::timestamp, table_name, schema_name, cascade, dry_run);
