@@ -1,16 +1,23 @@
 CREATE TABLE PUBLIC.drop_chunk_test1(time bigint, temp float8, device_id text);
 CREATE TABLE PUBLIC.drop_chunk_test2(time bigint, temp float8, device_id text);
 CREATE TABLE PUBLIC.drop_chunk_test3(time bigint, temp float8, device_id text);
+CREATE TABLE PUBLIC.drop_chunk_test4(time bigint, temp float8, device_id_diff_schema text);
+CREATE TABLE PUBLIC.drop_chunk_test5(time bigint, temp float8, device_id int);
+
+
 CREATE INDEX ON drop_chunk_test1(time DESC);
 SELECT create_hypertable('public.drop_chunk_test1', 'time', chunk_time_interval => 1, create_default_indexes=>false);
 SELECT create_hypertable('public.drop_chunk_test2', 'time', chunk_time_interval => 1, create_default_indexes=>false);
 SELECT create_hypertable('public.drop_chunk_test3', 'time', chunk_time_interval => 1, create_default_indexes=>false);
+SELECT create_hypertable('public.drop_chunk_test4', 'time', chunk_time_interval => 1, create_default_indexes=>false);
+SELECT create_hypertable('public.drop_chunk_test5', 'time', chunk_time_interval => 1, create_default_indexes=>false);
+
 
 -- Add space dimensions to ensure chunks share dimension slices
 SELECT add_dimension('public.drop_chunk_test1', 'device_id', 2);
 SELECT add_dimension('public.drop_chunk_test2', 'device_id', 2);
 SELECT add_dimension('public.drop_chunk_test3', 'device_id', 2);
-
+SELECT add_dimension('public.drop_chunk_test4', 'device_id_diff_schema', 2);
 SELECT c.id AS chunk_id, c.hypertable_id, c.schema_name AS chunk_schema, c.table_name AS chunk_table, ds.range_start, ds.range_end
 FROM _timescaledb_catalog.chunk c
 INNER JOIN _timescaledb_catalog.hypertable h ON (c.hypertable_id = h.id)
@@ -45,6 +52,15 @@ INSERT INTO PUBLIC.drop_chunk_test3 VALUES(4, 4.0, 'dev7');
 INSERT INTO PUBLIC.drop_chunk_test3 VALUES(5, 5.0, 'dev7');
 INSERT INTO PUBLIC.drop_chunk_test3 VALUES(6, 6.0, 'dev7');
 
+INSERT INTO PUBLIC.drop_chunk_test4 VALUES(1, 1.0, 'dev1');
+INSERT INTO PUBLIC.drop_chunk_test4 VALUES(2, 2.0, 'dev1');
+INSERT INTO PUBLIC.drop_chunk_test4 VALUES(3, 3.0, 'dev1');
+INSERT INTO PUBLIC.drop_chunk_test4 VALUES(4, 4.0, 'dev7');
+INSERT INTO PUBLIC.drop_chunk_test4 VALUES(5, 5.0, 'dev7');
+INSERT INTO PUBLIC.drop_chunk_test4 VALUES(6, 6.0, 'dev7');
+
+INSERT INTO PUBLIC.drop_chunk_test5 VALUES(1, 1.0, 4);
+
 SELECT c.id AS chunk_id, c.hypertable_id, c.schema_name AS chunk_schema, c.table_name AS chunk_table, ds.range_start, ds.range_end
 FROM _timescaledb_catalog.chunk c
 INNER JOIN _timescaledb_catalog.hypertable h ON (c.hypertable_id = h.id)
@@ -67,6 +83,64 @@ INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
 FULL OUTER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id);
 SELECT * FROM _timescaledb_catalog.dimension_slice;
 
+-- test getting rows from chunk tables
+\set ON_ERROR_STOP 0
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(ARRAY[],NULL::drop_chunk_test2);
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(ARRAY[''],NULL::drop_chunk_test2);
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(ARRAY['table_that_does_not_exist'],NULL::drop_chunk_test2);
+\set ON_ERROR_STOP 1
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(ARRAY[]::TEXT[],NULL::drop_chunk_test2);
+-- same hypertable chunks
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(
+    ARRAY[
+        '_timescaledb_internal._hyper_2_7_chunk',
+        '_timescaledb_internal._hyper_2_7_chunk',
+        '_timescaledb_internal._hyper_2_7_chunk'],NULL::drop_chunk_test2);
+
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(
+    ARRAY[
+        '_timescaledb_internal._hyper_1_1_chunk',
+        '_timescaledb_internal._hyper_1_2_chunk',
+        '_timescaledb_internal._hyper_1_3_chunk',
+        '_timescaledb_internal._hyper_1_4_chunk'],NULL::drop_chunk_test1);
+
+-- different hypertable but same schema and field name chunks
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(
+    ARRAY[
+        '_timescaledb_internal._hyper_1_1_chunk',
+        '_timescaledb_internal._hyper_1_2_chunk',
+        '_timescaledb_internal._hyper_1_3_chunk',
+        '_timescaledb_internal._hyper_1_4_chunk',
+        '_timescaledb_internal._hyper_2_7_chunk'],NULL::drop_chunk_test1);
+
+-- different hypertable, different field names but same type signiture
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(
+    ARRAY[
+        '_timescaledb_internal._hyper_1_1_chunk',
+        '_timescaledb_internal._hyper_1_2_chunk',
+        '_timescaledb_internal._hyper_1_3_chunk',
+        '_timescaledb_internal._hyper_1_4_chunk',
+        '_timescaledb_internal._hyper_4_19_chunk'],NULL::drop_chunk_test1);
+
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(
+    ARRAY[
+        '_timescaledb_internal._hyper_1_1_chunk',
+        '_timescaledb_internal._hyper_1_2_chunk',
+        '_timescaledb_internal._hyper_1_3_chunk',
+        '_timescaledb_internal._hyper_1_4_chunk',
+        '_timescaledb_internal._hyper_4_19_chunk'],NULL::drop_chunk_test4);
+
+\set ON_ERROR_STOP 0
+-- different hypertable, different same names but different type signiture
+SELECT * FROM  _timescaledb_internal.get_rows_from_tables(
+    ARRAY[
+        '_timescaledb_internal._hyper_1_1_chunk',
+        '_timescaledb_internal._hyper_1_2_chunk',
+        '_timescaledb_internal._hyper_1_3_chunk',
+        '_timescaledb_internal._hyper_1_4_chunk',
+        '_timescaledb_internal._hyper_5_25_chunk'],NULL::drop_chunk_test1);
+\set ON_ERROR_STOP 1
+
 -- Drop one chunk "manually" and verify that dimension slices and
 -- constraints are cleaned up. Each chunk has two constraints and two
 -- dimension slices. Both constraints should be deleted, but only one
@@ -82,6 +156,15 @@ FULL OUTER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension
 -- Only one dimension slice deleted
 SELECT * FROM _timescaledb_catalog.dimension_slice;
 
+-- Nothing should change
+SELECT drop_chunks(2, CASCADE=>true, dry_run => TRUE);
+
+SELECT c.table_name, cc.constraint_name, ds.id AS dimension_slice_id, ds.range_start, ds.range_end
+FROM _timescaledb_catalog.chunk c
+INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
+FULL OUTER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id);
+SELECT * FROM _timescaledb_catalog.dimension_slice;
+
 SELECT drop_chunks(2, CASCADE=>true);
 
 SELECT c.table_name, cc.constraint_name, ds.id AS dimension_slice_id, ds.range_start, ds.range_end
@@ -89,6 +172,18 @@ FROM _timescaledb_catalog.chunk c
 INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (c.id = cc.chunk_id)
 FULL OUTER JOIN _timescaledb_catalog.dimension_slice ds ON (ds.id = cc.dimension_slice_id);
 SELECT * FROM _timescaledb_catalog.dimension_slice;
+
+SELECT c.id AS chunk_id, c.hypertable_id, c.schema_name AS chunk_schema, c.table_name AS chunk_table, ds.range_start, ds.range_end
+FROM _timescaledb_catalog.chunk c
+INNER JOIN _timescaledb_catalog.hypertable h ON (c.hypertable_id = h.id)
+INNER JOIN  _timescaledb_internal.dimension_get_time(h.id) time_dimension ON(true)
+INNER JOIN  _timescaledb_catalog.dimension_slice ds ON (ds.dimension_id = time_dimension.id)
+INNER JOIN  _timescaledb_catalog.chunk_constraint cc ON (cc.dimension_slice_id = ds.id AND cc.chunk_id = c.id)
+WHERE h.schema_name = 'public' AND (h.table_name = 'drop_chunk_test1' OR h.table_name = 'drop_chunk_test2');
+
+\dt "_timescaledb_internal".*
+
+SELECT drop_chunks(3, 'drop_chunk_test1', dry_run => TRUE);
 
 SELECT c.id AS chunk_id, c.hypertable_id, c.schema_name AS chunk_schema, c.table_name AS chunk_table, ds.range_start, ds.range_end
 FROM _timescaledb_catalog.chunk c
@@ -127,7 +222,7 @@ WHERE h.schema_name = 'public' AND (h.table_name = 'drop_chunk_test1' OR h.table
 
 -- should error because no hypertable
 \set ON_ERROR_STOP 0
-SELECT drop_chunks(5, 'drop_chunk_test4');
+SELECT drop_chunks(5, 'drop_chunk_test4');-- TODO such hypertable is now created. If kept this test needs to be modified
 \set ON_ERROR_STOP 1
 
 DROP TABLE _timescaledb_internal._hyper_1_6_chunk;
