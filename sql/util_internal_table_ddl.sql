@@ -207,3 +207,63 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.tables_to_csv(
         EXECUTE (format('COPY (%s) TO ''%s'' WITH CSV', query, csv_path));
     END
     $BODY$;
+
+-- linear-fit stuff
+DROP TABLE IF EXISTS cpu_temps;
+CREATE TABLE cpu_temps (
+    time bigint,
+    device int,
+    temp float
+);
+
+INSERT INTO cpu_temps (time, device, temp)
+VALUES
+(1, 1, NULL),
+(1, 2, NULL),
+(1, 3, NULL),
+(2, 1, NULL),
+(2, 2, NULL),
+(2, 3, NULL),
+(3, 1, 55),
+(3, 2, 58),
+(3, 3, 60),
+(4, 2, 59),
+(4, 1, 57),
+(5, 1, 62),
+(4, 3, 66),
+(6, 1, NULL),
+(6, 2, NULL),
+(7, 1, 60),
+(8, 2, NULL)
+;
+
+CREATE OR REPLACE FUNCTION locf_s_no_init(a anyelement, b anyelement)
+RETURNS anyelement
+LANGUAGE SQL
+AS '
+  SELECT COALESCE(b, a)
+';
+
+DROP aggregate IF EXISTS locf(anyelement);
+CREATE AGGREGATE locf(anyelement) (
+  SFUNC = locf_s_no_init,
+  STYPE = anyelement
+);
+
+CREATE OR REPLACE FUNCTION linear_fit(tbl regclass, time_column TEXT, val TEXT,group_by TEXT) RETURNS SETOF RECORD 
+LANGUAGE PLPGSQL
+AS
+$BODY$
+BEGIN
+RETURN QUERY EXECUTE format($$
+With
+times as (SELECT COALESCE(%I, generate_series) as tt FROM generate_series(1,10, 0.3)  FULL OUTER JOIN (SELECT DISTINCT %I from %I ) t2 
+ON generate_series = %I),
+extended_tbl as (select * from times 
+                               LEFT JOIN (select * from %I) t2 ON 
+                              %I BETWEEN tt AND 
+                              tt + 0.01)
+SELECT tt, temp, device, locf(%I) over (partition by %I order by tt) FROM extended_tbl;
+$$, time_column, time_column, tbl, time_column, tbl, time_column, val, group_by);
+END
+$BODY$;
