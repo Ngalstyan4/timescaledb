@@ -78,6 +78,7 @@ set(HEADERS
 
 set(SOURCES
   agg_bookend.c
+  deparse.c
   cache.c
   cache_invalidate.c
   catalog.c
