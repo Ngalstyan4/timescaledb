@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION _timescaledb_internal.ngtest(tablename TEXT)
-RETURNS INTEGER
-AS '@MODULE_PATHNAME@', 'ngtest'
+CREATE OR REPLACE FUNCTION _timescaledb_internal.deparse_test(tablename TEXT)
+RETURNS TEXT
+AS '@MODULE_PATHNAME@', 'deparse_test'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
