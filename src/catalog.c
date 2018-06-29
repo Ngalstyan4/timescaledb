@@ -6,12 +6,12 @@
 #include <utils/builtins.h>
 #include <utils/syscache.h>
 #include <utils/inval.h>
-#include <access/xact.h>
+#include <access/xact.h> // duplicate line 9 and line 14
 #include <access/htup_details.h>
 #include <miscadmin.h>
 #include <commands/dbcommands.h>
 #include <commands/sequence.h>
-#include <access/xact.h>
+#include <access/xact.h> // duplicate ^^
 
 #include "compat.h"
 #include "catalog.h"
