@@ -27,6 +27,7 @@ typedef struct QueryString {
 Oid get_relation_id(char * relationName);
 void query_string_add(QueryString *qs, char *q);
 char *query_string_to_string(QueryString *qs);
+void query_string_create_table(QueryString *qs, char *relation_fqn);
 void query_string_deparse_columns(QueryString *qs, Oid reloid);
 char *deparse_create_table(char *relation_fqn);
 PG_FUNCTION_INFO_V1(deparse_test);
@@ -53,12 +54,15 @@ char *query_string_to_string(QueryString *qs) {
     return q_str;
 }
 
+/* outward facing api for testing purposes only.
+ * Depraser is generally going to be used internally.
+ */
 Datum
 deparse_test(PG_FUNCTION_ARGS)
 {
     char *final_query = NULL;
     text *relation_text = PG_GETARG_TEXT_P(0);
-    // Q: shall I split full name with get_rel_name,get_rel_namespace?
+    // Q:: shall I split full name with get_rel_name,get_rel_namespace?
     char *relation_fqn = TextDatumGetCString(relation_text);
     // Q:: who frees final query?
     final_query = deparse_create_table(relation_fqn);
@@ -71,12 +75,9 @@ char *deparse_create_table(char *relation_fqn) {
     QueryString *qs = palloc(sizeof(QueryString));
     Oid relation_oid;
     relation_oid = get_relation_id(relation_fqn);
-    // reate_table_info_populate_columns(&table_info);
     qs->len = 0;
     qs->strings = NIL;
-    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ]
-    query_string_add(qs, "CREATE TABLE \n");
-    query_string_add(qs, relation_fqn);
+    query_string_create_table(qs, relation_fqn);
     query_string_deparse_columns(qs, relation_oid);
     return query_string_to_string(qs);
 }
@@ -100,6 +101,15 @@ get_relation_id(char *relationName)
         return relationId;
 }
 
+/*Add initial CREATE TABLE stuff to the given query string*/
+void
+query_string_create_table(QueryString *qs, char *relation_fqn) {
+    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ]
+    query_string_add(qs, "CREATE TABLE \n");
+    query_string_add(qs, relation_fqn);
+}
+
+/* Deparse columns and add to the given query string*/
 void
 query_string_deparse_columns(QueryString *qs, Oid reloid) {
     char *col_type;
@@ -107,6 +117,7 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
     TupleDesc rel_descr;
     FormData_pg_attribute attr;
     int atts_sofar = 0;
+    int dim_iter;
     table_rel = relation_open(reloid, NoLock);
     Assert(true); // TODO:: Q:: some kind of validaiton for qs?
     if (table_rel->rd_rel->relkind != RELKIND_RELATION)
@@ -121,17 +132,12 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
 
         if (attr.attisdropped)
             continue;
-        // TODO:
-        // attr.attndims # of array dimensions, not sure if pg_type fills this in
-        // or it needs to be done manually.
-        // from pg_dump, shall i worry about this case?
         /*
             * Normally, dump if it's locally defined in this table, and
             * not dropped.  But for binary upgrade, we'll dump all the
             * columns, and then fix up the dropped and nonlocal cases
             * below.
         */
-
         /* Format properly if not first attr */
         if (atts_sofar == 0)
             query_string_add(qs, " (");
@@ -149,6 +155,10 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
         // TODO:: refactor into sth like query_string_add(qs, "%s %s",NameStr(attr.attname),  col_type)
         query_string_add(qs, " ");
         query_string_add(qs, col_type);
+        dim_iter = 0;
+        while(++dim_iter < attr.attndims) // first pair of [] comes from pg_type
+            query_string_add(qs, "[]");
+
         if (attr.attnotnull)
             query_string_add(qs, " NOT NULL");
 
@@ -156,7 +166,7 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
         //     query_string_add(qs, " DEFAULT");
 
         // attr.atthasdef;
-        // Q:: pg_type has the default. unless there is a function to do, I will need to 
+        // Q:: pg_type has the default. unless there is a function to do, I will need to
         // relation_open it
         // attr->attislocal sth about inheritence and dropping when parent is dropped
     }

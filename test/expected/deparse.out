@@ -1,0 +1,79 @@
+\c single :ROLE_SUPERUSER
+CREATE SCHEMA IF NOT EXISTS "customSchema" AUTHORIZATION :ROLE_DEFAULT_PERM_USER;
+\c single :ROLE_DEFAULT_PERM_USER
+CREATE TABLE test1 (time timestamp, temp float8);
+CREATE TABLE test2 (time timestamp NOT NULL, temp float8);
+-- dimension sizes still not handled TODO::
+CREATE TABLE test3 (time timestamp NOT NULL, temp float8 NOT NULL, temp2 int[], temp3 int[][], temp4 int [][][], temp5 int[4][4]);
+CREATE TABLE "customSchema".test4 (time timestamp, temp float8);
+CREATE TABLE test5 (time timestamp, device INT PRIMARY KEY, temp float8);
+-- \c single :ROLE_SUPERUSER
+-- CREATE OR REPLACE FUNCTION _timescaledb_internal.deparse_test(tablename TEXT)
+-- RETURNS TEXT
+-- AS '@MODULE_PATHNAME@', 'deparse_test'
+-- LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+-- \c single :ROLE_DEFAULT_PERM_USER
+SELECT _timescaledb_internal.deparse_test('public.test1');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE 
+public.test1 (
+    time timestamp without time zone,
+    temp double precision
+)  
+ ***************************
+             deparse_test              
+---------------------------------------
+ CREATE TABLE                         +
+ public.test1 (                       +
+     time timestamp without time zone,+
+     temp double precision            +
+ ) 
+(1 row)
+
+SELECT _timescaledb_internal.deparse_test('public.test2');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE 
+public.test2 (
+    time timestamp without time zone NOT NULL,
+    temp double precision
+)  
+ ***************************
+                  deparse_test                  
+------------------------------------------------
+ CREATE TABLE                                  +
+ public.test2 (                                +
+     time timestamp without time zone NOT NULL,+
+     temp double precision                     +
+ ) 
+(1 row)
+
+SELECT _timescaledb_internal.deparse_test('public.test3');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE 
+public.test3 (
+    time timestamp without time zone NOT NULL,
+    temp double precision NOT NULL,
+    temp2 integer[],
+    temp3 integer[][],
+    temp4 integer[][][],
+    temp5 integer[][]
+)  
+ ***************************
+                  deparse_test                  
+------------------------------------------------
+ CREATE TABLE                                  +
+ public.test3 (                                +
+     time timestamp without time zone NOT NULL,+
+     temp double precision NOT NULL,           +
+     temp2 integer[],                          +
+     temp3 integer[][],                        +
+     temp4 integer[][][],                      +
+     temp5 integer[][]                         +
+ ) 
+(1 row)
+
+SELECT _timescaledb_internal.deparse_test('customSchema.test4');
+ERROR:  schema "customschema" does not exist
