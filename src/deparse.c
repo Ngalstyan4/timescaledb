@@ -11,40 +11,13 @@
 #include <access/htup_details.h>
 #include <access/heapam.h>
 #include <utils/relcache.h>
+#include <catalog/objectaccess.h> // get_catalog_object_by_oid
 
 // #include "compat.h"
 // #if PG10
 #include <utils/regproc.h>
 // #endif
 
-
-// #include <
-// #include <catalog/namespace.h>
-// #include <nodes/value.h>
-// #include <utils/lsyscache.h>
-// #include <utils/datum.h>
-// #include <lib/stringinfo.h>
-// #include <libpq/pqformat.h>
-
-// typedef struct CreateTableInfo {
-//     Oid table_oid;
-//     char *table_name;
-//     List *table_columns;
-
-// } CreateTableInfo;
-
-// typedef struct CreateTableColumnInfo {
-//     char *name;
-//     char *type;
-//     char *default_value;
-//     int32 num_dimensions;
-//     bool has_default;
-//     bool is_nullable;
-//     bool is_dropped; // not sure if there is any reason to keep track of dropped columns in here
-// } CreateTableColumnInfo;
-
-// implements sth like java StringBuffer
-//pg_dump uses PQExpBuffer internally
 typedef struct QueryString {
     size_t len;
     List *strings;
@@ -52,14 +25,11 @@ typedef struct QueryString {
 
 
 Oid get_relation_id(char * relationName);
-
-
 void query_string_add(QueryString *qs, char *q);
 char *query_string_to_string(QueryString *qs);
 void query_string_deparse_columns(QueryString *qs, Oid reloid);
 char *deparse_create_table(char *relation_fqn);
 PG_FUNCTION_INFO_V1(deparse_test);
-
 
 void query_string_add(QueryString *qs, char *q) {
     size_t add_len;
@@ -83,8 +53,6 @@ char *query_string_to_string(QueryString *qs) {
     return q_str;
 }
 
-
-/* first(internal internal_state, anyelement value, "any" comparison_element) */
 Datum
 deparse_test(PG_FUNCTION_ARGS)
 {
@@ -106,7 +74,7 @@ char *deparse_create_table(char *relation_fqn) {
     // reate_table_info_populate_columns(&table_info);
     qs->len = 0;
     qs->strings = NIL;
-    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] 
+    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ]
     query_string_add(qs, "CREATE TABLE \n");
     query_string_add(qs, relation_fqn);
     query_string_deparse_columns(qs, relation_oid);
@@ -129,24 +97,21 @@ get_relation_id(char *relationName)
         relation = makeRangeVarFromNameList(relationNameList);
         // Q:: difference between NoLock and AccessShareLock?
         relationId = RangeVarGetRelid(relation, NoLock, failOK);
-    
         return relationId;
 }
 
 void
 query_string_deparse_columns(QueryString *qs, Oid reloid) {
-    HeapTuple tuple;
+    char *col_type;
     Relation table_rel;
-    Relation type_rel;
     TupleDesc rel_descr;
     FormData_pg_attribute attr;
     int atts_sofar = 0;
     table_rel = relation_open(reloid, NoLock);
-
     Assert(true); // TODO:: Q:: some kind of validaiton for qs?
-    if (table_rel->rd_rel->relkind != RELKIND_RELATION) 
+    if (table_rel->rd_rel->relkind != RELKIND_RELATION)
     // TODO:: Q:: should relkind cryptic letter be given a human readable alias in error message?
-    // I can probably find 
+    // I can probably find
         elog(ERROR, "argument having oid %d is not a table but is %c", reloid, table_rel->rd_rel->relkind);
 
     rel_descr = RelationGetDescr(table_rel);// Q:: can directly access rel->rd_att like in chunk_index etc
@@ -154,49 +119,48 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
     for(int i = 0; i < rel_descr->natts; i++) {
         attr = (*(rel_descr->attrs)[i]);
 
+        if (attr.attisdropped)
+            continue;
+        // TODO:
+        // attr.attndims # of array dimensions, not sure if pg_type fills this in
+        // or it needs to be done manually.
         // from pg_dump, shall i worry about this case?
-                /*
-				 * Normally, dump if it's locally defined in this table, and
-				 * not dropped.  But for binary upgrade, we'll dump all the
-				 * columns, and then fix up the dropped and nonlocal cases
-				 * below.
-				 */
+        /*
+            * Normally, dump if it's locally defined in this table, and
+            * not dropped.  But for binary upgrade, we'll dump all the
+            * columns, and then fix up the dropped and nonlocal cases
+            * below.
+        */
 
         /* Format properly if not first attr */
-					if (atts_sofar == 0)
-						query_string_add(qs, " (");
-					else
-						query_string_add(qs, ",");
-					query_string_add(qs, "\n    ");
-					atts_sofar++;
+        if (atts_sofar == 0)
+            query_string_add(qs, " (");
+        else
+            query_string_add(qs, ",");
+        query_string_add(qs, "\n    ");
+        atts_sofar++;
         query_string_add(qs, NameStr(attr.attname));
-        query_string_add(qs, " WITHTYPE ");
 
+        /* These macros allow the collation argument to be omitted (with a default of
+        * InvalidOid, ie, no collation).  They exist mostly for backwards
+        * compatibility of source code.
+        ^^ Q:: looks like DirectFunctionCall is for backward compatibility, shall I still use it?*/
+        col_type = DatumGetCString(DirectFunctionCall1(regtypeout, ObjectIdGetDatum(attr.atttypid)));
+        // TODO:: refactor into sth like query_string_add(qs, "%s %s",NameStr(attr.attname),  col_type)
+        query_string_add(qs, " ");
+        query_string_add(qs, col_type);
+        if (attr.attnotnull)
+            query_string_add(qs, " NOT NULL");
 
-        type_rel = relation_open(attr.atttypid, NoLock);
-        elog(INFO, "rel type attname: %s", NameStr((((*type_rel->rd_att->attrs)[0]).attname)));
-        // column_info->name = NameStr(attr.attname);
-        // column_info->is_dropped = attr.attisdropped;
-        // column_info->has_default = attr.atthasdef;
-        // column_info->num_dimensions = attr.attndims;
+        // if (attr.atthasdef)
+        //     query_string_add(qs, " DEFAULT");
+
+        // attr.atthasdef;
+        // Q:: pg_type has the default. unless there is a function to do, I will need to 
+        // relation_open it
         // attr->attislocal sth about inheritence and dropping when parent is dropped
     }
     query_string_add(qs, "\n) ");
-
-    // tuple = SearchSysCache1(relation_OID, ObjectIdGetDatum(relation_oid));
-    // if (!HeapTupleIsValid(tuple))
-	// 	ereport(ERROR,
-	// 			(errcode(ERRCODE_UNDEFINED_SCHEMA),
-	// 			 errmsg("table with OID %u does not exist", relation_oid)));
-    // reltup = (Form_pg_class) GETSTRUCT(tuple);
-	// ReleaseSysCache(tuple);
+    // Q:: Can I close relation earlier?
     relation_close(table_rel, NoLock);
 }
-
-        /* create schema if the table is not in the default namespace (public) */
-        // schemaId = get_rel_namespace(relationId);
-        // createSchemaCommand = CreateSchemaDDLCommand(schemaId);
-        // if (createSchemaCommand != NULL)
-        // {
-        //         tableDDLEventList = lappend(tableDDLEventList, createSchemaCommand);
-        // }
