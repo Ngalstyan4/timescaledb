@@ -129,7 +129,7 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
 
     for(int i = 0; i < rel_descr->natts; i++) {
         attr = (*(rel_descr->attrs)[i]);
-
+        elog(INFO, "->>>>> %d", attr.atttypmod); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
         if (attr.attisdropped)
             continue;
         /*
