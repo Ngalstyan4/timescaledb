@@ -63,7 +63,7 @@ BEGIN
         RAISE 'The timestamp provided to drop_chunks cannot be null';
     END IF;
 
-    PERFORM  _timescaledb_internal.drop_chunks_type_check(pg_typeof(older_than), table_name, schema_name);
+    PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(older_than), table_name, schema_name);
     SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_internal;
     PERFORM _timescaledb_internal.drop_chunks_impl(older_than_internal, table_name, schema_name, cascade);
 END
@@ -111,6 +111,25 @@ BEGIN
 END
 $BODY$;
 
+-- Show chunks older than an interval.
+CREATE OR REPLACE FUNCTION show_chunks(
+    hypertable_name  REGCLASS,
+    older_than anyelement = NULL
+)
+    RETURNS SETOF REGCLASS LANGUAGE PLPGSQL VOLATILE AS
+$BODY$
+DECLARE
+    older_than_time BIGINT;
+BEGIN
+    IF older_than IS NULL THEN
+        RAISE 'The timestamp provided to drop_chunks cannot be null';
+    END IF;
+
+    PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(older_than), hypertable_name);
+    SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_time;
+    RETURN QUERY SELECT _timescaledb_internal.show_chunks_impl(hypertable_name, older_than_time);
+END
+$BODY$;
 -- Add a dimension (of partitioning) to a hypertable
 --
 -- main_table - OID of the table to add a dimension to
