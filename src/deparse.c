@@ -12,47 +12,22 @@
 #include <access/heapam.h>
 #include <utils/relcache.h>
 #include <catalog/objectaccess.h> // get_catalog_object_by_oid
+#include <lib/stringinfo.h>
+#include <catalog/pg_type.h>
+#include <catalog/objectaddress.h>
+#include <access/htup_details.h>
+#include <catalog/pg_collation.h>
 
 // #include "compat.h"
 // #if PG10
 #include <utils/regproc.h>
 // #endif
 
-typedef struct QueryString {
-    size_t len;
-    List *strings;
-} QueryString;
-
 
 Oid get_relation_id(char * relationName);
-void query_string_add(QueryString *qs, char *q);
-char *query_string_to_string(QueryString *qs);
-void query_string_create_table(QueryString *qs, char *relation_fqn);
-void query_string_deparse_columns(QueryString *qs, Oid reloid);
-char *deparse_create_table(char *relation_fqn);
+void ct_deparse_columns(StringInfo qs, Relation table_rel, Oid reloid);
+char *deparse_create_table(Oid reloid);
 PG_FUNCTION_INFO_V1(deparse_test);
-
-void query_string_add(QueryString *qs, char *q) {
-    size_t add_len;
-    AssertArg(qs->len >= 0);
-    
-    add_len = strlen(q);
-    Assert(qs->len + add_len > qs->len);
-    qs->len += add_len;
-    qs->strings = lappend(qs->strings, pstrdup(q));
-}
-// Q:: as of now user should free this, is it ok?
-char *query_string_to_string(QueryString *qs) {
-    AssertArg(qs->len >0);
-    char *q_str = palloc(sizeof(char) * (qs->len + 1) );
-    char *current = q_str;
-    ListCell *lc;
-    foreach(lc, qs->strings) {
-        // Q:: namestrcpy instead? 
-        current = stpcpy(current, lfirst(lc));
-    }
-    return q_str;
-}
 
 /* outward facing api for testing purposes only.
  * Depraser is generally going to be used internally.
@@ -64,22 +39,35 @@ deparse_test(PG_FUNCTION_ARGS)
     text *relation_text = PG_GETARG_TEXT_P(0);
     // Q:: shall I split full name with get_rel_name,get_rel_namespace?
     char *relation_fqn = TextDatumGetCString(relation_text);
+    Oid relation_oid = get_relation_id(relation_fqn);
     // Q:: who frees final query?
-    final_query = deparse_create_table(relation_fqn);
+    final_query = deparse_create_table(relation_oid);
     elog(INFO, "*******FINAL QUERY*****: \n\n %s \n ***************************", final_query);
     PG_RETURN_TEXT_P(CStringGetTextDatum(final_query));
 
 }
 
-char *deparse_create_table(char *relation_fqn) {
-    QueryString *qs = palloc(sizeof(QueryString));
-    Oid relation_oid;
-    relation_oid = get_relation_id(relation_fqn);
-    qs->len = 0;
-    qs->strings = NIL;
-    query_string_create_table(qs, relation_fqn);
-    query_string_deparse_columns(qs, relation_oid);
-    return query_string_to_string(qs);
+char *deparse_create_table(Oid reloid) {
+    StringInfo qs = makeStringInfo();
+    // CREATE TABLE
+    char *table_name;
+
+
+    Relation table_rel;
+    table_rel = relation_open(reloid, ShareLock);
+
+/*Add initial CREATE TABLE stuff to the given query string*/
+    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ]
+    table_name = NameStr(table_rel->rd_rel->relname); // TODO relnamespace
+    appendStringInfo(qs, "CREATE TABLE %s\n", table_name);
+
+    // Add columns START
+    ct_deparse_columns(qs, table_rel, reloid);
+    // Add columns END
+        // Q:: Can I close relation earlier?
+    relation_close(table_rel, ShareLock);
+
+    return qs->data;
 }
 
 
@@ -101,35 +89,32 @@ get_relation_id(char *relationName)
         return relationId;
 }
 
-/*Add initial CREATE TABLE stuff to the given query string*/
-void
-query_string_create_table(QueryString *qs, char *relation_fqn) {
-    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ]
-    query_string_add(qs, "CREATE TABLE \n");
-    query_string_add(qs, relation_fqn);
-}
-
 /* Deparse columns and add to the given query string*/
 void
-query_string_deparse_columns(QueryString *qs, Oid reloid) {
-    char *col_type;
-    Relation table_rel;
+ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
+    elog(INFO, "table reloid %d", reloid); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
+
+    Relation pg_type;
+    Relation pg_collation;
     TupleDesc rel_descr;
     FormData_pg_attribute attr;
-    int atts_sofar = 0;
+    Form_pg_type pg_type_row;
+    Form_pg_collation pg_collation_row;
+    HeapTuple heaptuple;
     int dim_iter;
-    table_rel = relation_open(reloid, NoLock);
+    int atts_sofar = 0;
     Assert(true); // TODO:: Q:: some kind of validaiton for qs?
     if (table_rel->rd_rel->relkind != RELKIND_RELATION)
     // TODO:: Q:: should relkind cryptic letter be given a human readable alias in error message?
-    // I can probably find
         elog(ERROR, "argument having oid %d is not a table but is %c", reloid, table_rel->rd_rel->relkind);
 
     rel_descr = RelationGetDescr(table_rel);// Q:: can directly access rel->rd_att like in chunk_index etc
-
+    pg_type = relation_open(TypeRelationId, ShareLock);
+    pg_collation = relation_open(CollationRelationId, ShareLock);
     for(int i = 0; i < rel_descr->natts; i++) {
         attr = (*(rel_descr->attrs)[i]);
         elog(INFO, "->>>>> %d", attr.atttypmod); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
+
         if (attr.attisdropped)
             continue;
         /*
@@ -140,37 +125,54 @@ query_string_deparse_columns(QueryString *qs, Oid reloid) {
         */
         /* Format properly if not first attr */
         if (atts_sofar == 0)
-            query_string_add(qs, " (");
+            appendStringInfoString(qs, " (");
         else
-            query_string_add(qs, ",");
-        query_string_add(qs, "\n    ");
+            appendStringInfoString(qs, ",");
+        appendStringInfoString(qs, "\n    ");
         atts_sofar++;
-        query_string_add(qs, NameStr(attr.attname));
 
-        /* These macros allow the collation argument to be omitted (with a default of
-        * InvalidOid, ie, no collation).  They exist mostly for backwards
-        * compatibility of source code.
-        ^^ Q:: looks like DirectFunctionCall is for backward compatibility, shall I still use it?*/
-        col_type = DatumGetCString(DirectFunctionCall1(regtypeout, ObjectIdGetDatum(attr.atttypid)));
-        // TODO:: refactor into sth like query_string_add(qs, "%s %s",NameStr(attr.attname),  col_type)
-        query_string_add(qs, " ");
-        query_string_add(qs, col_type);
+        appendStringInfoString(qs, NameStr(attr.attname));
+        heaptuple = get_catalog_object_by_oid(pg_type, attr.atttypid);
+
+        pg_type_row = (Form_pg_type) GETSTRUCT(heaptuple);
+
+        appendStringInfo(qs, " %s",NameStr(pg_type_row->typname));
         dim_iter = 0;
-        while(++dim_iter < attr.attndims) // first pair of [] comes from pg_type
-            query_string_add(qs, "[]");
-
+        while(++dim_iter < pg_type_row->typndims) // first pair of [] comes from pg_type
+            appendStringInfoString(qs, "[]");
+        // technically the second condition is not necessary but this is to avoid clutter in generated
+        // query
+        if (attr.attcollation != InvalidOid && attr.attcollation != get_typcollation(attr.atttypid)) {
+            heaptuple = get_catalog_object_by_oid(pg_collation, attr.attcollation);
+            pg_collation_row = (Form_pg_collation) GETSTRUCT(heaptuple);
+            // Q:: do I need to worry about collation owner, namespace etc?
+            appendStringInfo(qs, " COLLATE \"%s\"", NameStr(pg_collation_row->collname));
+        }
         if (attr.attnotnull)
-            query_string_add(qs, " NOT NULL");
+            appendStringInfoString(qs, " NOT NULL");
 
-        // if (attr.atthasdef)
-        //     query_string_add(qs, " DEFAULT");
-
-        // attr.atthasdef;
-        // Q:: pg_type has the default. unless there is a function to do, I will need to
-        // relation_open it
+        if (attr.atthasdef) {
+            // Q::: shall I optimize this?
+            for(int i = 0; i < rel_descr->constr->num_defval;i++) {
+                AttrDefault attr_def = rel_descr->constr->defval[i];
+                if (attr_def.adnum == attr.attnum) {
+                    /* These macros allow the collation argument to be omitted (with a default of
+                    * InvalidOid, ie, no collation).  They exist mostly for backwards
+                    * compatibility of source code.
+                    ^^ Q:: looks like DirectFunctionCall is for backward compatibility, shall I still use it?*/
+                    
+                    // Q:: shall I keep separate variable? shall I define it in the beginning of the function?
+                    char *attr_default = TextDatumGetCString(DirectFunctionCall2(pg_get_expr,
+                                                            CStringGetTextDatum(attr_def.adbin),
+                                                            ObjectIdGetDatum(reloid)));
+                    appendStringInfo(qs, " DEFAULT %s",attr_default);
+                    break;
+                }
+            }
+        }
         // attr->attislocal sth about inheritence and dropping when parent is dropped
     }
-    query_string_add(qs, "\n) ");
-    // Q:: Can I close relation earlier?
-    relation_close(table_rel, NoLock);
+    relation_close(pg_collation, ShareLock);
+    relation_close(pg_type, ShareLock);
+    appendStringInfoString(qs, "\n) ");
 }
