@@ -15,7 +15,13 @@ CREATE TABLE test6 (time TIMESTAMP NOT NULL,
       tt_col TEXT COLLATE "es_ES",
       tt_def_col TEXT DEFAULT ('ա' COLLATE "hy_AM")
 );
+CREATE TABLE test7 (time_start TIMESTAMP NOT NULL,
+                    time_end   TIMESTAMP NOT NULL CHECK (time_end >= time_start),
+                    val_min    INT CHECK (val_min < val_max),
+                    val_max    INT CHECK (val_max > val_min)
+);
 -- CREATE TABLE "customSchema".test6 (time timestamp, temp float8);
+
 
 
 SELECT _timescaledb_internal.deparse_test('public.test1');

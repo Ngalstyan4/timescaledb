@@ -17,6 +17,10 @@
 #include <catalog/objectaddress.h>
 #include <access/htup_details.h>
 #include <catalog/pg_collation.h>
+#include <catalog/pg_constraint.h>
+#include <catalog/pg_constraint_fn.h>
+#include <access/sysattr.h> // FirstLowInvalidHeapAttributeNumber
+
 
 // #include "compat.h"
 // #if PG10
@@ -96,11 +100,14 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
 
     Relation pg_type;
     Relation pg_collation;
+    Relation pg_constraint; // used only for checks;
     TupleDesc rel_descr;
     FormData_pg_attribute attr;
     Form_pg_type pg_type_row;
     Form_pg_collation pg_collation_row;
+    Form_pg_constraint pg_constraint_row;
     HeapTuple heaptuple;
+    Bitmapset *primary_key_attnos = NULL;
     int dim_iter;
     int atts_sofar = 0;
     Assert(true); // TODO:: Q:: some kind of validaiton for qs?
@@ -111,6 +118,8 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
     rel_descr = RelationGetDescr(table_rel);// Q:: can directly access rel->rd_att like in chunk_index etc
     pg_type = relation_open(TypeRelationId, ShareLock);
     pg_collation = relation_open(CollationRelationId, ShareLock);
+    Oid RANDOOOOOM_OID; //todo fix
+    primary_key_attnos = get_primary_key_attnos(reloid,false, &RANDOOOOOM_OID);
     for(int i = 0; i < rel_descr->natts; i++) {
         attr = (*(rel_descr->attrs)[i]);
         elog(INFO, "->>>>> %d", attr.atttypmod); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
@@ -160,7 +169,6 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
                     * InvalidOid, ie, no collation).  They exist mostly for backwards
                     * compatibility of source code.
                     ^^ Q:: looks like DirectFunctionCall is for backward compatibility, shall I still use it?*/
-                    
                     // Q:: shall I keep separate variable? shall I define it in the beginning of the function?
                     char *attr_default = TextDatumGetCString(DirectFunctionCall2(pg_get_expr,
                                                             CStringGetTextDatum(attr_def.adbin),
@@ -169,6 +177,15 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
                     break;
                 }
             }
+        }
+        // attr.attstattarget
+        // if (rel_descr->constr->num_check> 0) {
+        //     heaptuple = get_catalog_object_by_oid(pg_constraint, Oid objectId)
+        //     elog(INFO, "CONSTRAINTS attroid %d \n name: %s\n bin: %s", attr.attrelid, rel_descr->constr->check->ccname, rel_descr->constr->check->ccbin);
+        // }
+
+        if(primary_key_attnos && bms_is_member(attr.attnum-FirstLowInvalidHeapAttributeNumber, primary_key_attnos)) {
+            appendStringInfoString(qs, " PRIMARY KEY");
         }
         // attr->attislocal sth about inheritence and dropping when parent is dropped
     }
