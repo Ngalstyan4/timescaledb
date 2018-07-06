@@ -29,10 +29,8 @@
 #include <utils/regproc.h>
 // #endif
 
-
-Oid get_relation_id(char * relationName);
-void ct_deparse_columns(StringInfo qs, Relation table_rel, Oid reloid);
-void ct_deparse_constraints(StringInfo qs, Relation table_rel, Oid reloid);
+void ct_deparse_columns(StringInfo qs, Relation table_rel);
+void ct_deparse_constraints(StringInfo qs, Relation table_rel);
 char *deparse_create_table(Oid reloid);
 PG_FUNCTION_INFO_V1(deparse_test);
 
@@ -43,10 +41,7 @@ Datum
 deparse_test(PG_FUNCTION_ARGS)
 {
     char *final_query = NULL;
-    text *relation_text = PG_GETARG_TEXT_P(0);
-    // Q:: shall I split full name with get_rel_name,get_rel_namespace?
-    char *relation_fqn = TextDatumGetCString(relation_text);
-    Oid relation_oid = get_relation_id(relation_fqn);
+    Oid relation_oid = PG_GETARG_OID(0);
     // Q:: who frees final query?
     final_query = deparse_create_table(relation_oid);
     elog(INFO, "*******FINAL QUERY*****: \n\n %s \n ***************************", final_query);
@@ -57,78 +52,58 @@ deparse_test(PG_FUNCTION_ARGS)
 char *deparse_create_table(Oid reloid) {
     StringInfo qs = makeStringInfo();
     // CREATE TABLE
-    char *table_name;
+    char *table_name = NULL;
+    char *namespace_name = NULL;
+    Relation table_rel = relation_open(reloid, AccessShareLock);
 
+    if(table_rel->rd_rel->relpersistence != RELPERSISTENCE_PERMANENT)
+        ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Table with OID %u cannot be deparsed."
+                        " TEMP and UNLOGGED tables are not supported.", reloid)));
 
-    Relation table_rel;
-    table_rel = relation_open(reloid, ShareLock);
+    /*Add initial CREATE TABLE stuff to the given query string*/
+    table_name = NameStr(table_rel->rd_rel->relname);
+    namespace_name = get_namespace_name(table_rel->rd_rel->relnamespace);
+    appendStringInfo(qs, "CREATE TABLE %s.%s\n", quote_identifier(namespace_name),
+                                                 quote_identifier(table_name));
 
-/*Add initial CREATE TABLE stuff to the given query string*/
-    // pretend those options do not exist [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ]
-    table_name = NameStr(table_rel->rd_rel->relname); // TODO relnamespace
-    appendStringInfo(qs, "CREATE TABLE %s\n", table_name);
+    ct_deparse_columns(qs, table_rel);
 
-    // Add columns START
-    ct_deparse_columns(qs, table_rel, reloid);
-    // Add columns END
-    // Add constraints START
-    ct_deparse_constraints(qs, table_rel, reloid);
-    // Add constraints END
-        // Q:: Can I close relation earlier?
-    relation_close(table_rel, ShareLock);
+    ct_deparse_constraints(qs, table_rel);
+    // Q:: Can I close relation earlier?
+    relation_close(table_rel, AccessShareLock);
 
     return qs->data;
 }
 
-
-/* From emacs -nw citus/src/backend/distributed/master/master_node_protocol.c:528 */
-/* Finds the relationId from a potentially qualified relation name. */
-Oid
-get_relation_id(char *relationName)
-{
-        List *relationNameList = NIL;
-        RangeVar *relation = NULL;
-        Oid relationId = InvalidOid;
-        bool failOK = false;        /* error if relation cannot be found */
-
-        /* resolve relationId from passed in schema and relation name */
-        relationNameList = stringToQualifiedNameList(relationName);
-        relation = makeRangeVarFromNameList(relationNameList);
-        // Q:: difference between NoLock and AccessShareLock?
-        relationId = RangeVarGetRelid(relation, NoLock, failOK);
-        return relationId;
-}
-
 /* Deparse columns and add to the given query string*/
 void
-ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
-    elog(INFO, "table reloid %d", reloid); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
-    Assert(table_rel->rd_id == reloid);
+ct_deparse_columns(StringInfo qs,Relation table_rel) {
+    Oid reloid = table_rel->rd_id;
     Relation pg_type;
     Relation pg_collation;
-    Relation pg_constraint; // used only for checks;
     TupleDesc rel_descr;
     FormData_pg_attribute attr;
     Form_pg_type pg_type_row;
     Form_pg_collation pg_collation_row;
-    Form_pg_constraint pg_constraint_row;
     HeapTuple heaptuple;
-    Bitmapset *primary_key_attnos = NULL;
-    Bitmapset *constraint_attnos = NULL;
     int dim_iter;
-    int atts_sofar = 0;
+    int attrs_sofar = 0;
     Assert(true); // TODO:: Q:: some kind of validaiton for qs?
     if (table_rel->rd_rel->relkind != RELKIND_RELATION)
     // TODO:: Q:: should relkind cryptic letter be given a human readable alias in error message?
-        elog(ERROR, "argument having oid %d is not a table but is %c", reloid, table_rel->rd_rel->relkind);
+        ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("Argument having oid %d is not a table but is %c",
+                        reloid, table_rel->rd_rel->relkind)));
 
     rel_descr = RelationGetDescr(table_rel);// Q:: can directly access rel->rd_att like in chunk_index etc
-    pg_type = relation_open(TypeRelationId, ShareLock);
-    pg_collation = relation_open(CollationRelationId, ShareLock);
-    Oid RANDOOOOOM_OID; //todo fix
+    pg_type = relation_open(TypeRelationId, AccessShareLock);
+    pg_collation = relation_open(CollationRelationId, AccessShareLock);
+
     for(int i = 0; i < rel_descr->natts; i++) {
         attr = (*(rel_descr->attrs)[i]);
-        elog(INFO, "->>>>> %d", attr.atttypmod); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
 
         if (attr.attisdropped)
             continue;
@@ -138,31 +113,45 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
             * columns, and then fix up the dropped and nonlocal cases
             * below.
         */
+        /// ^^^^ from pg_dump. Q:: what is a binary upgrade? Sth to worry about?
         /* Format properly if not first attr */
-        if (atts_sofar == 0)
+        if (attrs_sofar == 0)
             appendStringInfoString(qs, " (");
         else
             appendStringInfoString(qs, ",");
-        appendStringInfoString(qs, "\n    ");
-        atts_sofar++;
+        appendStringInfoString(qs, "\n");
+        attrs_sofar++;
 
-        appendStringInfoString(qs, NameStr(attr.attname));
         heaptuple = get_catalog_object_by_oid(pg_type, attr.atttypid);
-
         pg_type_row = (Form_pg_type) GETSTRUCT(heaptuple);
+        // <^^^-- not used after some refactoring, left here in case we need more type info for
+        // some edge cases.
 
-        appendStringInfo(qs, " %s",NameStr(pg_type_row->typname));
+        appendStringInfoString(qs, quote_identifier(NameStr(attr.attname)));
+        appendStringInfo(qs, " %s", format_type_with_typemod_qualified(attr.atttypid, attr.atttypmod));
+        /*
+        From https://www.postgresql.org/docs/9.1/static/arrays.html
+        However, the current implementation ignores any supplied array size limits,
+        i.e., the behavior is the same as for arrays of unspecified length.
+
+        The current implementation does not enforce the declared number of dimensions either.
+        Arrays of a particular element type are all considered to be of the same type,
+        regardless of size or number of dimensions. So, declaring the array size or number
+        of dimensions in CREATE TABLE is simply documentation; it does not affect run-time behavior.
+        */
         dim_iter = 0;
-        while(++dim_iter < pg_type_row->typndims) // first pair of [] comes from pg_type
+        while(++dim_iter < attr.attndims) // first pair of [] comes from pg_type
             appendStringInfoString(qs, "[]");
-        // technically the second condition is not necessary but this is to avoid clutter in generated
-        // query
+
+        // technically the second condition is not necessary but this is to avoid
+        // clutter in generated query
         if (attr.attcollation != InvalidOid && attr.attcollation != get_typcollation(attr.atttypid)) {
             heaptuple = get_catalog_object_by_oid(pg_collation, attr.attcollation);
             pg_collation_row = (Form_pg_collation) GETSTRUCT(heaptuple);
             // Q:: do I need to worry about collation owner, namespace etc?
-            appendStringInfo(qs, " COLLATE \"%s\"", NameStr(pg_collation_row->collname));
+            appendStringInfo(qs, " COLLATE %s", quote_identifier(NameStr(pg_collation_row->collname)));
         }
+
         if (attr.attnotnull)
             appendStringInfoString(qs, " NOT NULL");
 
@@ -179,33 +168,25 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
                     char *attr_default = TextDatumGetCString(DirectFunctionCall2(pg_get_expr,
                                                             CStringGetTextDatum(attr_def.adbin),
                                                             ObjectIdGetDatum(reloid)));
-                    appendStringInfo(qs, " DEFAULT %s",attr_default);
+                    appendStringInfo(qs, " DEFAULT %s",quote_literal_cstr(attr_default)); // Q:: not sure this is the correct quoting function
                     break;
                 }
             }
         }
-        // attr.attstattarget
-        // if (rel_descr->constr->num_check> 0) {
-        //     heaptuple = get_catalog_object_by_oid(pg_constraint, Oid objectId)
-        //     elog(INFO, "CONSTRAINTS attroid %d \n name: %s\n bin: %s", attr.attrelid, rel_descr->constr->check->ccname, rel_descr->constr->check->ccbin);
-        // }
-
-        // NICE!! pg_get_constraintdef_worker does almost all of the work for me!!
-        if(primary_key_attnos && bms_is_member(attr.attnum-FirstLowInvalidHeapAttributeNumber, primary_key_attnos)) {
-            appendStringInfoString(qs, " PRIMARY KEY");
-        }
-        // attr->attislocal sth about inheritence and dropping when parent is dropped
     }
-    
-    relation_close(pg_collation, ShareLock);
-    relation_close(pg_type, ShareLock);
-    appendStringInfoString(qs, "\n) ");
 
+    relation_close(pg_collation, AccessShareLock);
+    relation_close(pg_type, AccessShareLock);
+    appendStringInfoString(qs, "\n)");
     appendStringInfoString(qs, ";\n");
 }
 
 // adapted from chunk_constraint.c:chunk_constraints_add_inheritable_constraints
-void ct_deparse_constraints(StringInfo qs, Relation table_rel, Oid reloid) {
+/* Add constraint informaiton of the given Relation to the given StringInfo
+ * as valid SQL ALTER TABLE statements.
+*/
+void ct_deparse_constraints(StringInfo qs, Relation table_rel) {
+    Oid reloid = table_rel->rd_id;
 	ScanKeyData skey;
 	Relation	rel;
 	SysScanDesc scan;
@@ -223,16 +204,28 @@ void ct_deparse_constraints(StringInfo qs, Relation table_rel, Oid reloid) {
 	while (HeapTupleIsValid(htup = systable_getnext(scan)))
 	{
 		Form_pg_constraint pg_constraint = (Form_pg_constraint) GETSTRUCT(htup);
+        if (pg_constraint->condeferred ||pg_constraint->condeferrable)
+            ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                    errmsg("Table with OID %u has deferred or deferrable constraints."
+                           " These are not supported in deparsing",
+                            reloid)));
+
+
+        // Q:: get_relation_constraint_oid claims to return __a constraint__ and looks like names do not have to unique.
+        // is this a real issue? I saw the function being used in other places that is why decided to use here
+        // despite the point above.
         constroid = get_relation_constraint_oid(reloid, NameStr(pg_constraint->conname), false);
-        // constrdef = TextDatumGetCString(DirectFunctionCall1(pg_get_constraintdef_command,
-        //                                                     ObjectIdGetDatum(constroid)));
+        // could use `pg_get_constraintdef_ext` if we think this is part of an internal postgres API bound to change
+        // Q:: the function was renamed from `pg_get_constraintdef_string` to `pg_get_constraintdef_command` in postgres 9.5. Do we support version before?
+        // https://github.com/postgres/postgres/commit/a35c5b7c1ffcde123b7b9b717608ed8357af870f
+        // (funny that they did not rename pg_get_indexdef_string in the same file )
         constrdef = pg_get_constraintdef_command(constroid);
-        appendStringInfo(qs, "%s\n", constrdef);
+        appendStringInfo(qs, "%s;\n", constrdef);
 	}
 
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 }
 
-
-// pg_get_indexdef_worker
+//TODO use this in index deparsing `  pg_get_indexdef_worker

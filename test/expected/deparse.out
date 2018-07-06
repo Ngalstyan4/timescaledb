@@ -2,11 +2,93 @@
 CREATE SCHEMA IF NOT EXISTS "customSchema" AUTHORIZATION :ROLE_DEFAULT_PERM_USER;
 \c single :ROLE_DEFAULT_PERM_USER
 CREATE TABLE test1 (time timestamp, temp float8);
+SELECT _timescaledb_internal.deparse_test('public.test1');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test1
+ (
+"time" timestamp without time zone,
+temp double precision
+);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
 CREATE TABLE test2 (time timestamp NOT NULL, temp float8);
+SELECT _timescaledb_internal.deparse_test('public.test2');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test2
+ (
+"time" timestamp without time zone NOT NULL,
+temp double precision
+);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
 -- dimension sizes still not handled TODO::
 CREATE TABLE test3 (time timestamp NOT NULL, temp float8 NOT NULL, temp2 int[], temp3 int[][], temp4 int [][][], temp5 int[4][4]);
+SELECT _timescaledb_internal.deparse_test('public.test3');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test3
+ (
+"time" timestamp without time zone NOT NULL,
+temp double precision NOT NULL,
+temp2 integer[],
+temp3 integer[][],
+temp4 integer[][][],
+temp5 integer[][]
+);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
 CREATE TABLE test4 (time timestamp, device INT PRIMARY KEY, temp float8);
+SELECT _timescaledb_internal.deparse_test('public.test4'); -- Q:: TODO how to get primary key info? is this in constraints or in pg_type?
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test4
+ (
+"time" timestamp without time zone,
+device integer NOT NULL,
+temp double precision
+);
+ALTER TABLE public.test4 ADD CONSTRAINT test4_pkey PRIMARY KEY (device);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
 CREATE TABLE test5 (time timestamp, name CHAR(30) NOT NULL, vname VARCHAR );
+SELECT _timescaledb_internal.deparse_test('public.test5');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test5
+ (
+"time" timestamp without time zone,
+name character(30) NOT NULL,
+vname character varying
+);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
 CREATE TABLE test6 (time TIMESTAMP NOT NULL,
       num INT NOT NULL DEFAULT 48,
       n INT DEFAULT 455454,
@@ -14,166 +96,192 @@ CREATE TABLE test6 (time TIMESTAMP NOT NULL,
       tt_col TEXT COLLATE "es_ES",
       tt_def_col TEXT DEFAULT ('ա' COLLATE "hy_AM")
 );
+SELECT _timescaledb_internal.deparse_test('public.test6');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test6
+ (
+"time" timestamp without time zone NOT NULL,
+num integer NOT NULL DEFAULT '48',
+n integer DEFAULT '455454',
+tt pg_catalog.text,
+tt_col pg_catalog.text COLLATE "es_ES",
+tt_def_col pg_catalog.text DEFAULT '(''ա''::text COLLATE "hy_AM")'
+);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
 CREATE TABLE test7 (time_start TIMESTAMP NOT NULL,
                     time_end   TIMESTAMP NOT NULL CHECK (time_end >= time_start),
                     val_min    INT CHECK (val_min < val_max),
                     val_max    INT CHECK (val_max > val_min)
 );
--- CREATE TABLE "customSchema".test6 (time timestamp, temp float8);
-SELECT _timescaledb_internal.deparse_test('public.test1');
-INFO:  table reloid 16605
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
+SELECT _timescaledb_internal.deparse_test('public.test7');
 INFO:  *******FINAL QUERY*****: 
 
- CREATE TABLE test1
+ CREATE TABLE public.test7
  (
-    time timestamp,
-    temp float8
-)  
+time_start timestamp without time zone NOT NULL,
+time_end timestamp without time zone NOT NULL,
+val_min integer,
+val_max integer
+);
+ALTER TABLE public.test7 ADD CONSTRAINT test7_check2 CHECK ((val_max > val_min));
+ALTER TABLE public.test7 ADD CONSTRAINT test7_check1 CHECK ((val_min < val_max));
+ALTER TABLE public.test7 ADD CONSTRAINT test7_check CHECK ((time_end >= time_start));
+ 
  ***************************
-    deparse_test     
----------------------
- CREATE TABLE test1 +
-  (                 +
-     time timestamp,+
-     temp float8    +
- ) 
+ deparse_test 
+--------------
+  
 (1 row)
 
-SELECT _timescaledb_internal.deparse_test('public.test2');
-INFO:  table reloid 16608
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
+CREATE TABLE test8 (time_start TIMESTAMP NOT NULL,
+                    time_end   TIMESTAMP NOT NULL CHECK (time_end >= time_start),
+                    val_min    INT CONSTRAINT min_less_max CHECK (val_min < val_max),
+                    val_max    INT CHECK (val_min < val_max) -- Q:: can I reuse constraints by name?
+);
+ALTER TABLE public.test8 ADD PRIMARY KEY (time_start);
+ALTER TABLE public.test8 ADD UNIQUE (time_end);
+SELECT _timescaledb_internal.deparse_test('public.test8');
 INFO:  *******FINAL QUERY*****: 
 
- CREATE TABLE test2
+ CREATE TABLE public.test8
  (
-    time timestamp NOT NULL,
-    temp float8
-)  
+time_start timestamp without time zone NOT NULL,
+time_end timestamp without time zone NOT NULL,
+val_min integer,
+val_max integer
+);
+ALTER TABLE public.test8 ADD CONSTRAINT test8_time_end_key UNIQUE (time_end);
+ALTER TABLE public.test8 ADD CONSTRAINT test8_pkey PRIMARY KEY (time_start);
+ALTER TABLE public.test8 ADD CONSTRAINT test8_check1 CHECK ((val_min < val_max));
+ALTER TABLE public.test8 ADD CONSTRAINT min_less_max CHECK ((val_min < val_max));
+ALTER TABLE public.test8 ADD CONSTRAINT test8_check CHECK ((time_end >= time_start));
+ 
  ***************************
-         deparse_test         
-------------------------------
- CREATE TABLE test2          +
-  (                          +
-     time timestamp NOT NULL,+
-     temp float8             +
- ) 
+ deparse_test 
+--------------
+  
 (1 row)
 
-SELECT _timescaledb_internal.deparse_test('public.test3');
-INFO:  table reloid 16611
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
+CREATE TABLE test9 (time_start TIMESTAMP NOT NULL,
+                    val_min    INT,
+                    val_max    INT
+);
+ALTER TABLE public.test9 ADD CONSTRAINT cnstr CHECK (val_min < val_max);
+SELECT _timescaledb_internal.deparse_test('public.test9');
 INFO:  *******FINAL QUERY*****: 
 
- CREATE TABLE test3
+ CREATE TABLE public.test9
  (
-    time timestamp NOT NULL,
-    temp float8 NOT NULL,
-    temp2 _int4,
-    temp3 _int4,
-    temp4 _int4,
-    temp5 _int4
-)  
+time_start timestamp without time zone NOT NULL,
+val_min integer,
+val_max integer
+);
+ALTER TABLE public.test9 ADD CONSTRAINT cnstr CHECK ((val_min < val_max));
+ 
  ***************************
-         deparse_test         
-------------------------------
- CREATE TABLE test3          +
-  (                          +
-     time timestamp NOT NULL,+
-     temp float8 NOT NULL,   +
-     temp2 _int4,            +
-     temp3 _int4,            +
-     temp4 _int4,            +
-     temp5 _int4             +
- ) 
+ deparse_test 
+--------------
+  
 (1 row)
 
-SELECT _timescaledb_internal.deparse_test('public.test4'); -- Q:: TODO how to get primary key info? is this in constraints or in pg_type?
-INFO:  table reloid 16617
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
+CREATE TABLE test10 (time_start TIMESTAMP NOT NULL,
+                    "strange name"    TEXT CHECK ("strange name"  != 'specific case here') DEFAULT 'multiword name',
+                    "Странное название"    INT
+);
+SELECT _timescaledb_internal.deparse_test('public.test10');
 INFO:  *******FINAL QUERY*****: 
 
- CREATE TABLE test4
+ CREATE TABLE public.test10
  (
-    time timestamp,
-    device int4 NOT NULL PRIMARY KEY,
-    temp float8
-)  
+time_start timestamp without time zone NOT NULL,
+"strange name" pg_catalog.text DEFAULT '''multiword name''::text',
+"Странное название" integer
+);
+ALTER TABLE public.test10 ADD CONSTRAINT "test10_strange name_check" CHECK (("strange name" <> 'specific case here'::text));
+ 
  ***************************
-             deparse_test              
----------------------------------------
- CREATE TABLE test4                   +
-  (                                   +
-     time timestamp,                  +
-     device int4 NOT NULL PRIMARY KEY,+
-     temp float8                      +
- ) 
+ deparse_test 
+--------------
+  
 (1 row)
 
-SELECT _timescaledb_internal.deparse_test('public.test5');
-INFO:  table reloid 16622
-INFO:  ->>>>> -1
-INFO:  ->>>>> 34
-INFO:  ->>>>> -1
+-- errors
+\set ON_ERROR_STOP 0
+SELECT _timescaledb_internal.deparse_test('nonexistent');
+ERROR:  relation "nonexistent" does not exist at character 43
+CREATE TEMP TABLE test10 (time_start TIMESTAMP NOT NULL);
+SELECT _timescaledb_internal.deparse_test('test10'); -- not schema qualified
+ERROR:  Table with OID 16667 cannot be deparsed. TEMP and UNLOGGED tables are not supported.
+CREATE UNLOGGED TABLE test11 (time_start TIMESTAMP NOT NULL);
+SELECT _timescaledb_internal.deparse_test('public.test11');
+ERROR:  Table with OID 16670 cannot be deparsed. TEMP and UNLOGGED tables are not supported.
+CREATE TABLE test12 (time_start TIMESTAMP PRIMARY KEY DEFERRABLE INITIALLY IMMEDIATE);
+SELECT _timescaledb_internal.deparse_test('public.test12');
+ERROR:  Table with OID 16673 has deferred or deferrable constraints. These are not supported in deparsing
+CREATE TABLE test13 (time_start TIMESTAMP PRIMARY KEY DEFERRABLE INITIALLY DEFERRED);
+SELECT _timescaledb_internal.deparse_test('public.test13');
+ERROR:  Table with OID 16679 has deferred or deferrable constraints. These are not supported in deparsing
+\set ON_ERROR_STOP 1
+CREATE TABLE test14 (time_start TIMESTAMP NOT NULL PRIMARY KEY);
+SELECT _timescaledb_internal.deparse_test('public.test14');
 INFO:  *******FINAL QUERY*****: 
 
- CREATE TABLE test5
+ CREATE TABLE public.test14
  (
-    time timestamp,
-    name bpchar NOT NULL,
-    vname varchar
-)  
+time_start timestamp without time zone NOT NULL
+);
+ALTER TABLE public.test14 ADD CONSTRAINT test14_pkey PRIMARY KEY (time_start);
+ 
  ***************************
-       deparse_test        
----------------------------
- CREATE TABLE test5       +
-  (                       +
-     time timestamp,      +
-     name bpchar NOT NULL,+
-     vname varchar        +
- ) 
+ deparse_test 
+--------------
+  
 (1 row)
 
-SELECT _timescaledb_internal.deparse_test('public.test6');
-INFO:  table reloid 16628
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
-INFO:  ->>>>> -1
+CREATE TABLE test15 (
+    time TIMESTAMP REFERENCES test14(time_start),
+    blah TIMESTAMP REFERENCES test14(time_start)
+);
+SELECT _timescaledb_internal.deparse_test('public.test15');
 INFO:  *******FINAL QUERY*****: 
 
- CREATE TABLE test6
+ CREATE TABLE public.test15
  (
-    time timestamp NOT NULL,
-    num int4 NOT NULL DEFAULT 48,
-    n int4 DEFAULT 455454,
-    tt text,
-    tt_col text COLLATE "es_ES",
-    tt_def_col text DEFAULT ('ա'::text COLLATE "hy_AM")
-)  
+"time" timestamp without time zone,
+blah timestamp without time zone
+);
+ALTER TABLE public.test15 ADD CONSTRAINT test15_blah_fkey FOREIGN KEY (blah) REFERENCES test14(time_start);
+ALTER TABLE public.test15 ADD CONSTRAINT test15_time_fkey FOREIGN KEY ("time") REFERENCES test14(time_start);
+ 
  ***************************
-                      deparse_test                       
----------------------------------------------------------
- CREATE TABLE test6                                     +
-  (                                                     +
-     time timestamp NOT NULL,                           +
-     num int4 NOT NULL DEFAULT 48,                      +
-     n int4 DEFAULT 455454,                             +
-     tt text,                                           +
-     tt_col text COLLATE "es_ES",                       +
-     tt_def_col text DEFAULT ('ա'::text COLLATE "hy_AM")+
- ) 
+ deparse_test 
+--------------
+  
 (1 row)
 
--- SELECT _timescaledb_internal.deparse_test('customSchema.test6'); -- this fails for some reason TODO
+CREATE TABLE test16 (time TIMESTAMP, FOREIGN KEY (time) REFERENCES test14(time_start));
+SELECT _timescaledb_internal.deparse_test('public.test16');
+INFO:  *******FINAL QUERY*****: 
+
+ CREATE TABLE public.test16
+ (
+"time" timestamp without time zone
+);
+ALTER TABLE public.test16 ADD CONSTRAINT test16_time_fkey FOREIGN KEY ("time") REFERENCES test14(time_start);
+ 
+ ***************************
+ deparse_test 
+--------------
+  
+(1 row)
+
+CREATE TABLE "customSchema".test17 (time timestamp, temp float8);
+SELECT _timescaledb_internal.deparse_test('customSchema.test17'); -- this fails for some reason TODO Q::
+ERROR:  schema "customschema" does not exist at character 43
