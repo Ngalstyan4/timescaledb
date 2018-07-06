@@ -20,8 +20,10 @@
 #include <catalog/pg_constraint.h>
 #include <catalog/pg_constraint_fn.h>
 #include <access/sysattr.h> // FirstLowInvalidHeapAttributeNumber
-
-
+#include <access/genam.h> // pg_constraint scan stuff
+#include <utils/fmgroids.h>
+#include <catalog/indexing.h>
+#include <utils/ruleutils.h>
 // #include "compat.h"
 // #if PG10
 #include <utils/regproc.h>
@@ -30,6 +32,7 @@
 
 Oid get_relation_id(char * relationName);
 void ct_deparse_columns(StringInfo qs, Relation table_rel, Oid reloid);
+void ct_deparse_constraints(StringInfo qs, Relation table_rel, Oid reloid);
 char *deparse_create_table(Oid reloid);
 PG_FUNCTION_INFO_V1(deparse_test);
 
@@ -47,7 +50,7 @@ deparse_test(PG_FUNCTION_ARGS)
     // Q:: who frees final query?
     final_query = deparse_create_table(relation_oid);
     elog(INFO, "*******FINAL QUERY*****: \n\n %s \n ***************************", final_query);
-    PG_RETURN_TEXT_P(CStringGetTextDatum(final_query));
+    PG_RETURN_TEXT_P(CStringGetTextDatum(" ")); // not returning as with + signs looks messy
 
 }
 
@@ -68,6 +71,9 @@ char *deparse_create_table(Oid reloid) {
     // Add columns START
     ct_deparse_columns(qs, table_rel, reloid);
     // Add columns END
+    // Add constraints START
+    ct_deparse_constraints(qs, table_rel, reloid);
+    // Add constraints END
         // Q:: Can I close relation earlier?
     relation_close(table_rel, ShareLock);
 
@@ -97,7 +103,7 @@ get_relation_id(char *relationName)
 void
 ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
     elog(INFO, "table reloid %d", reloid); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
-
+    Assert(table_rel->rd_id == reloid);
     Relation pg_type;
     Relation pg_collation;
     Relation pg_constraint; // used only for checks;
@@ -108,6 +114,7 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
     Form_pg_constraint pg_constraint_row;
     HeapTuple heaptuple;
     Bitmapset *primary_key_attnos = NULL;
+    Bitmapset *constraint_attnos = NULL;
     int dim_iter;
     int atts_sofar = 0;
     Assert(true); // TODO:: Q:: some kind of validaiton for qs?
@@ -119,7 +126,6 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
     pg_type = relation_open(TypeRelationId, ShareLock);
     pg_collation = relation_open(CollationRelationId, ShareLock);
     Oid RANDOOOOOM_OID; //todo fix
-    primary_key_attnos = get_primary_key_attnos(reloid,false, &RANDOOOOOM_OID);
     for(int i = 0; i < rel_descr->natts; i++) {
         attr = (*(rel_descr->attrs)[i]);
         elog(INFO, "->>>>> %d", attr.atttypmod); // this is 34 for CHAR(30) TODO Q:: why? 8 would make more sense, at least
@@ -184,12 +190,49 @@ ct_deparse_columns(StringInfo qs,Relation table_rel, Oid reloid) {
         //     elog(INFO, "CONSTRAINTS attroid %d \n name: %s\n bin: %s", attr.attrelid, rel_descr->constr->check->ccname, rel_descr->constr->check->ccbin);
         // }
 
+        // NICE!! pg_get_constraintdef_worker does almost all of the work for me!!
         if(primary_key_attnos && bms_is_member(attr.attnum-FirstLowInvalidHeapAttributeNumber, primary_key_attnos)) {
             appendStringInfoString(qs, " PRIMARY KEY");
         }
         // attr->attislocal sth about inheritence and dropping when parent is dropped
     }
+    
     relation_close(pg_collation, ShareLock);
     relation_close(pg_type, ShareLock);
     appendStringInfoString(qs, "\n) ");
+
+    appendStringInfoString(qs, ";\n");
 }
+
+// adapted from chunk_constraint.c:chunk_constraints_add_inheritable_constraints
+void ct_deparse_constraints(StringInfo qs, Relation table_rel, Oid reloid) {
+	ScanKeyData skey;
+	Relation	rel;
+	SysScanDesc scan;
+	HeapTuple	htup;
+    Oid constroid;
+    char * constrdef;
+	ScanKeyInit(&skey,
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ, reloid);
+
+	rel = heap_open(ConstraintRelationId, AccessShareLock);
+	scan = systable_beginscan(rel, ConstraintRelidIndexId, true,
+							  NULL, 1, &skey);
+
+	while (HeapTupleIsValid(htup = systable_getnext(scan)))
+	{
+		Form_pg_constraint pg_constraint = (Form_pg_constraint) GETSTRUCT(htup);
+        constroid = get_relation_constraint_oid(reloid, NameStr(pg_constraint->conname), false);
+        // constrdef = TextDatumGetCString(DirectFunctionCall1(pg_get_constraintdef_command,
+        //                                                     ObjectIdGetDatum(constroid)));
+        constrdef = pg_get_constraintdef_command(constroid);
+        appendStringInfo(qs, "%s\n", constrdef);
+	}
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+}
+
+
+// pg_get_indexdef_worker
