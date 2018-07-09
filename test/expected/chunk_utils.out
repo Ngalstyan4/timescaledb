@@ -565,6 +565,18 @@ SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
 (1 row)
 
 BEGIN;
+    SELECT drop_chunks(newer_than => interval '1 minute', table_name => 'drop_chunk_test_ts');
+ drop_chunks 
+-------------
+ 
+(1 row)
+
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
+                  Child                  | Tablespace 
+-----------------------------------------+------------
+ _timescaledb_internal._hyper_4_19_chunk | 
+(1 row)
+
     SELECT drop_chunks(interval '1 minute', 'drop_chunk_test_ts');
  drop_chunks 
 -------------
@@ -583,6 +595,19 @@ BEGIN;
 (1 row)
 
     SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
+ Child | Tablespace 
+-------+------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+    SELECT drop_chunks(newer_than => interval '6 minute', table_name => 'drop_chunk_test_ts');
+ drop_chunks 
+-------------
+ 
+(1 row)
+
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
  Child | Tablespace 
 -------+------------
 (0 rows)
@@ -612,14 +637,75 @@ BEGIN;
 (0 rows)
 
 ROLLBACK;
+BEGIN;
+    SELECT drop_chunks(newer_than => now()::timestamp-interval '1 minute', table_name => 'drop_chunk_test_ts');
+ drop_chunks 
+-------------
+ 
+(1 row)
+
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
+                  Child                  | Tablespace 
+-----------------------------------------+------------
+ _timescaledb_internal._hyper_4_19_chunk | 
+(1 row)
+
+    SELECT drop_chunks(newer_than => now()::timestamp-interval '6 minute', table_name => 'drop_chunk_test_ts');
+ drop_chunks 
+-------------
+ 
+(1 row)
+
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
+ Child | Tablespace 
+-------+------------
+(0 rows)
+
+    SELECT drop_chunks(newer_than => now()-interval '1 minute', table_name => 'drop_chunk_test_tstz');
+ drop_chunks 
+-------------
+ 
+(1 row)
+
+    SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
+                  Child                  | Tablespace 
+-----------------------------------------+------------
+ _timescaledb_internal._hyper_5_20_chunk | 
+(1 row)
+
+    SELECT drop_chunks(newer_than => now()-interval '6 minute', table_name => 'drop_chunk_test_tstz');
+ drop_chunks 
+-------------
+ 
+(1 row)
+
+    SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
+ Child | Tablespace 
+-------+------------
+(0 rows)
+
+ROLLBACK;
 \set ON_ERROR_STOP 0
 SELECT drop_chunks(interval '1 minute');
 ERROR:  Cannot use drop_chunks on multiple tables with different time types
+SELECT drop_chunks(newer_than => interval '1 minute');
+ERROR:  Cannot use drop_chunks on multiple tables with different time types
+SELECT drop_chunks(older_than => interval '1 minute', newer_than => now()-interval '6 minute',
+table_name => 'drop_chunk_test_tstz');
+ERROR:  function drop_chunks(older_than => interval, newer_than => timestamp with time zone, table_name => unknown) does not exist at character 8
+SELECT drop_chunks(older_than => interval '1 minute', newer_than => interval '6 minute',
+table_name => 'drop_chunk_test_tstz');
+ERROR:  Cannot accept both older_than AND newer_than. Please provide non-NULL value for only one of the two
+SELECT drop_chunks(older_than => now()-interval '1 minute', newer_than => now()-interval '6 minute',
+table_name => 'drop_chunk_test_tstz');
+ERROR:  Cannot accept both older_than AND newer_than. Please provide non-NULL value for only one of the two
 SELECT drop_chunks(interval '1 minute', 'drop_chunk_test3');
 ERROR:  Can only use drop_chunks with an INTERVAL for TIMESTAMP, TIMESTAMPTZ, and DATE types
 SELECT drop_chunks(now()-interval '1 minute', 'drop_chunk_test_ts');
 ERROR:  Cannot call drop_chunks with a timestamp with time zone on hypertables with a time type of: timestamp without time zone
 SELECT drop_chunks(now()::timestamp-interval '1 minute', 'drop_chunk_test_tstz');
+ERROR:  Cannot call drop_chunks with a timestamp without time zone on hypertables with a time type of: timestamp with time zone
+SELECT drop_chunks(table_name => 'drop_chunk_test_tstz', newer_than => now()::timestamp-interval '1 minute');
 ERROR:  Cannot call drop_chunks with a timestamp without time zone on hypertables with a time type of: timestamp with time zone
 \set ON_ERROR_STOP 1
 CREATE TABLE PUBLIC.drop_chunk_test_date(time date, temp float8, device_id text);

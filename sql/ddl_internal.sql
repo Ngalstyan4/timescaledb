@@ -11,8 +11,9 @@ $BODY$;
 
 -- Show chunks older than the given timestamp.
 CREATE OR REPLACE FUNCTION _timescaledb_internal.show_chunks_impl(
-    hypertable_name  REGCLASS,
-    older_than_time  BIGINT
+    hypertable_name REGCLASS,
+    older_than_time BIGINT = NULL,
+    newer_than_time BIGINT = NULL
 )
     RETURNS SETOF REGCLASS LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
@@ -23,7 +24,7 @@ DECLARE
     _schema_name TEXT;
 BEGIN
 
-    IF hypertable_name IS NULL AND older_than_time IS NULL THEN
+    IF older_than_time IS NULL AND newer_than_time IS NULL THEN
         RAISE 'Cannot have both arguments to show_chunks be NULL';
     END IF;
     SELECT c.relname, n.nspname
@@ -55,7 +56,8 @@ BEGIN
             ON (ds.dimension_id = time_dimension.id)
         INNER JOIN _timescaledb_catalog.chunk_constraint cc
             ON (cc.dimension_slice_id = ds.id AND cc.chunk_id = c.id)
-        WHERE (older_than_time IS NULL OR ds.range_end <= older_than_time) -- Q:: can older_than_time be null here? it is checked on line 29
+        WHERE (older_than_time IS NULL OR ds.range_end <= older_than_time)
+        AND (newer_than_time IS NULL OR ds.range_start >= newer_than_time)
         AND (_schema_name IS NULL OR h.schema_name = _schema_name)
         AND (_table_name IS NULL OR h.table_name = _table_name);
 END
@@ -69,7 +71,8 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.drop_chunks_impl(
     table_name  NAME = NULL,
     schema_name NAME = NULL,
     cascade  BOOLEAN = FALSE,
-    truncate_before  BOOLEAN = FALSE
+    truncate_before  BOOLEAN = FALSE,
+    newer_than_time BIGINT = NULL
 )
     RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
@@ -78,9 +81,8 @@ DECLARE
     cascade_mod TEXT = '';
     exist_count INT = 0;
 BEGIN
-    IF older_than_time IS NULL AND table_name IS NULL AND schema_name IS NULL THEN
-        RAISE 'Cannot have all 3 arguments to drop_chunks_older_than be NULL';
-                 -- TODO:: *****************^^^^^^^^^^^^^^^^^^^^^^^^ fix the comment
+    IF older_than_time IS NULL AND newer_than_time IS NULL AND table_name IS NULL AND schema_name IS NULL THEN
+        RAISE 'Cannot have older_than_time, newer_than_time and all table identifiers to drop_chunks be NULL';
     END IF;
 
     IF cascade THEN
@@ -100,7 +102,7 @@ BEGIN
         END IF;
     END IF;
 
-    FOR chunk_row IN SELECT _timescaledb_internal.show_chunks_impl(table_name::REGCLASS,older_than_time)
+    FOR chunk_row IN SELECT _timescaledb_internal.show_chunks_impl(table_name::REGCLASS, older_than_time, newer_than_time)
     LOOP
         IF truncate_before THEN
             EXECUTE format(
@@ -119,7 +121,6 @@ BEGIN
     END LOOP;
 END
 $BODY$;
--- TODO rename function
 CREATE OR REPLACE FUNCTION _timescaledb_internal.time_dim_type_check(
     given_type REGTYPE,
     table_name  NAME,

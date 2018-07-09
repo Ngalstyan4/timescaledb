@@ -156,6 +156,8 @@ SELECT * FROM test.show_subtables('drop_chunk_test_ts');
 SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
 
 BEGIN;
+    SELECT drop_chunks(newer_than => interval '1 minute', table_name => 'drop_chunk_test_ts');
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
     SELECT drop_chunks(interval '1 minute', 'drop_chunk_test_ts');
     SELECT * FROM test.show_subtables('drop_chunk_test_ts');
     SELECT drop_chunks(interval '1 minute', 'drop_chunk_test_tstz');
@@ -163,17 +165,40 @@ BEGIN;
 ROLLBACK;
 
 BEGIN;
+    SELECT drop_chunks(newer_than => interval '6 minute', table_name => 'drop_chunk_test_ts');
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
+ROLLBACK;
+BEGIN;
     SELECT drop_chunks(now()::timestamp-interval '1 minute', 'drop_chunk_test_ts');
     SELECT * FROM test.show_subtables('drop_chunk_test_ts');
     SELECT drop_chunks(now()-interval '1 minute', 'drop_chunk_test_tstz');
     SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
 ROLLBACK;
 
+BEGIN;
+    SELECT drop_chunks(newer_than => now()::timestamp-interval '1 minute', table_name => 'drop_chunk_test_ts');
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
+    SELECT drop_chunks(newer_than => now()::timestamp-interval '6 minute', table_name => 'drop_chunk_test_ts');
+    SELECT * FROM test.show_subtables('drop_chunk_test_ts');
+    SELECT drop_chunks(newer_than => now()-interval '1 minute', table_name => 'drop_chunk_test_tstz');
+    SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
+    SELECT drop_chunks(newer_than => now()-interval '6 minute', table_name => 'drop_chunk_test_tstz');
+    SELECT * FROM test.show_subtables('drop_chunk_test_tstz');
+ROLLBACK;
+
 \set ON_ERROR_STOP 0
 SELECT drop_chunks(interval '1 minute');
+SELECT drop_chunks(newer_than => interval '1 minute');
+SELECT drop_chunks(older_than => interval '1 minute', newer_than => now()-interval '6 minute',
+table_name => 'drop_chunk_test_tstz');
+SELECT drop_chunks(older_than => interval '1 minute', newer_than => interval '6 minute',
+table_name => 'drop_chunk_test_tstz');
+SELECT drop_chunks(older_than => now()-interval '1 minute', newer_than => now()-interval '6 minute',
+table_name => 'drop_chunk_test_tstz');
 SELECT drop_chunks(interval '1 minute', 'drop_chunk_test3');
 SELECT drop_chunks(now()-interval '1 minute', 'drop_chunk_test_ts');
 SELECT drop_chunks(now()::timestamp-interval '1 minute', 'drop_chunk_test_tstz');
+SELECT drop_chunks(table_name => 'drop_chunk_test_tstz', newer_than => now()::timestamp-interval '1 minute');
 \set ON_ERROR_STOP 1
 
 

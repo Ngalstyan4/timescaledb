@@ -49,32 +49,41 @@ CREATE OR REPLACE FUNCTION  set_number_partitions(
 
 -- Drop chunks that are older than a timestamp.
 CREATE OR REPLACE FUNCTION drop_chunks(
-    older_than anyelement,
+    older_than anyelement = NULL,
     table_name  NAME = NULL,
     schema_name NAME = NULL,
-    cascade  BOOLEAN = FALSE
+    cascade  BOOLEAN = FALSE,
+    newer_than anyelement = NULL
 )
     RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
 DECLARE
     older_than_internal BIGINT;
+    newer_than_internal BIGINT;
 BEGIN
-    IF older_than IS NULL THEN
-        RAISE 'The timestamp provided to drop_chunks cannot be null';
+    IF older_than IS NOT NULL AND newer_than IS NOT NULL THEN
+        RAISE 'Cannot accept both older_than AND newer_than. Please provide non-NULL value for only one of the two';
+    END IF;
+    IF older_than IS NULL AND newer_than IS NULL THEN
+        RAISE 'Both older_than and newer_than timestamps provided to drop_chunks cannot be null';
     END IF;
 
     PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(older_than), table_name, schema_name);
+    PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(newer_than), table_name, schema_name);
     SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_internal;
-    PERFORM _timescaledb_internal.drop_chunks_impl(older_than_internal, table_name, schema_name, cascade);
+    SELECT _timescaledb_internal.time_to_internal(newer_than, pg_typeof(newer_than)) INTO newer_than_internal;
+    PERFORM _timescaledb_internal.drop_chunks_impl(older_than_internal, table_name, schema_name, cascade,
+    truncate_before => FALSE, newer_than_time => newer_than_internal);
 END
 $BODY$;
 
 -- Drop chunks older than an interval.
 CREATE OR REPLACE FUNCTION drop_chunks(
-    older_than  INTERVAL,
+    older_than  INTERVAL = NULL,
     table_name  NAME = NULL,
     schema_name NAME = NULL,
-    cascade BOOLEAN = false
+    cascade BOOLEAN = FALSE,
+    newer_than  INTERVAL = NULL
 )
     RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
@@ -100,11 +109,14 @@ BEGIN
 
 
     IF time_type = 'TIMESTAMP'::regtype THEN
-        PERFORM @extschema@.drop_chunks((now() - older_than)::timestamp, table_name, schema_name, cascade);
+        PERFORM @extschema@.drop_chunks((now() - older_than)::timestamp, table_name, schema_name, cascade,
+        (now() - newer_than)::timestamp);
     ELSIF time_type = 'DATE'::regtype THEN
-        PERFORM @extschema@.drop_chunks((now() - older_than)::date, table_name, schema_name, cascade);
+        PERFORM @extschema@.drop_chunks((now() - older_than)::date, table_name, schema_name, cascade,
+        (now() - newer_than)::date);
     ELSIF time_type = 'TIMESTAMPTZ'::regtype THEN
-        PERFORM @extschema@.drop_chunks(now() - older_than, table_name, schema_name, cascade);
+        PERFORM @extschema@.drop_chunks(now() - older_than, table_name, schema_name, cascade,
+        now() - newer_than);
     ELSE
         RAISE 'Can only use drop_chunks with an INTERVAL for TIMESTAMP, TIMESTAMPTZ, and DATE types';
     END IF;
@@ -114,20 +126,24 @@ $BODY$;
 -- Show chunks older than an interval.
 CREATE OR REPLACE FUNCTION show_chunks(
     hypertable_name  REGCLASS,
-    older_than anyelement = NULL
+    older_than anyelement = NULL,
+    newer_than anyelement = NULL
 )
     RETURNS SETOF REGCLASS LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
 DECLARE
     older_than_time BIGINT;
+    newer_than_time BIGINT;
 BEGIN
-    IF older_than IS NULL THEN
-        RAISE 'The timestamp provided to drop_chunks cannot be null';
+    IF older_than IS NULL  AND newer_than IS NULL THEN
+        RAISE 'Both older_than and newer_than timestamps provided to drop_chunks cannot be null';
     END IF;
 
     PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(older_than), hypertable_name);
+    PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(newer_than), hypertable_name);
     SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_time;
-    RETURN QUERY SELECT _timescaledb_internal.show_chunks_impl(hypertable_name, older_than_time);
+    SELECT _timescaledb_internal.time_to_internal(newer_than, pg_typeof(newer_than)) INTO newer_than_time;
+    RETURN QUERY SELECT _timescaledb_internal.show_chunks_impl(hypertable_name, older_than_time, newer_than_time);
 END
 $BODY$;
 -- Add a dimension (of partitioning) to a hypertable
