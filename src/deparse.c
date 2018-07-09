@@ -15,7 +15,6 @@
 #include <lib/stringinfo.h>
 #include <catalog/pg_type.h>
 #include <catalog/objectaddress.h>
-#include <access/htup_details.h>
 #include <catalog/pg_collation.h>
 #include <catalog/pg_constraint.h>
 #include <catalog/pg_constraint_fn.h>
@@ -24,10 +23,8 @@
 #include <utils/fmgroids.h>
 #include <catalog/indexing.h>
 #include <utils/ruleutils.h>
-// #include "compat.h"
-// #if PG10
+
 #include <utils/regproc.h>
-// #endif
 
 void ct_deparse_columns(StringInfo qs, Relation table_rel);
 void ct_deparse_constraints(StringInfo qs, Relation table_rel);
@@ -44,9 +41,7 @@ deparse_test(PG_FUNCTION_ARGS)
     Oid relation_oid = PG_GETARG_OID(0);
     // Q:: who frees final query?
     final_query = deparse_create_table(relation_oid);
-    elog(INFO, "*******FINAL QUERY*****: \n\n %s \n ***************************", final_query);
-    PG_RETURN_TEXT_P(CStringGetTextDatum(" ")); // not returning as with + signs looks messy
-
+    PG_RETURN_TEXT_P(CStringGetTextDatum(final_query));
 }
 
 char *deparse_create_table(Oid reloid) {
@@ -119,7 +114,7 @@ ct_deparse_columns(StringInfo qs,Relation table_rel) {
             appendStringInfoString(qs, " (");
         else
             appendStringInfoString(qs, ",");
-        appendStringInfoString(qs, "\n");
+        appendStringInfoString(qs, "\n\t");
         attrs_sofar++;
 
         heaptuple = get_catalog_object_by_oid(pg_type, attr.atttypid);
@@ -168,7 +163,8 @@ ct_deparse_columns(StringInfo qs,Relation table_rel) {
                     char *attr_default = TextDatumGetCString(DirectFunctionCall2(pg_get_expr,
                                                             CStringGetTextDatum(attr_def.adbin),
                                                             ObjectIdGetDatum(reloid)));
-                    appendStringInfo(qs, " DEFAULT %s",quote_literal_cstr(attr_default)); // Q:: not sure this is the correct quoting function
+                    appendStringInfo(qs, " DEFAULT %s",attr_default); // Q:: shall this be quoted? if so how?
+                    // quoting it as literal makes things like this 'val'::text -> ''val'::text ''::text
                     break;
                 }
             }
