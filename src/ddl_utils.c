@@ -10,6 +10,7 @@
 #include <access/tupdesc.h>
 #include <nodes/makefuncs.h>
 #include <utils/lsyscache.h>
+#include <catalog/namespace.h>
 
 #include "cache.h"
 #include "hypertable_cache.h"
@@ -21,7 +22,6 @@
 // 					 Datum arg3);
 Datum show_chunks_c(PG_FUNCTION_ARGS);
 TS_FUNCTION_INFO_V1(show_chunks_relay);
-static const int FUNC_OID = 16540;
 Datum
 show_chunks_relay(PG_FUNCTION_ARGS)
 {
@@ -36,8 +36,13 @@ show_chunks_relay(PG_FUNCTION_ARGS)
     /* stuff done only on the first call of the function */
     if (SRF_IS_FIRSTCALL())
     {
+		/* Q:: makeString does not allow this to be const char *, would it not be
+		 * strictly safer to allow that?
+		 */
+		char *show_chunks_sql_name = "show_chunks_poly";
 		const int show_chunks_sql_args[] = {REGCLASSOID, ANYELEMENTOID, ANYELEMENTOID};
 		const int show_chunks_sql_nargs = 3;
+		Oid show_chunks_sql_oid = InvalidOid;
 		Oid anyelement_resolved_type = InvalidOid;
 
 		/* context for show_chunks SQL function call */
@@ -98,7 +103,20 @@ show_chunks_relay(PG_FUNCTION_ARGS)
 		/* Q:: maybe do the typechecking of bigint, timestamp, timestamtz here? SQL does it tho
 		 * create context for show_chunks SQL funciton call
 		 */
-		fmgr_info(FUNC_OID, &show_chunks_fmgrinfo);
+
+		FuncCandidateList funclist =
+		FuncnameGetCandidates(list_make2(makeString(INTERNAL_SCHEMA_NAME),
+										 makeString(show_chunks_sql_name)),
+							  show_chunks_sql_nargs, NULL, false, false, false);
+		if (funclist == NULL || funclist->next)
+			ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+					errmsg("Oid lookup failed for the function %s with %d args",
+					show_chunks_sql_name, show_chunks_sql_nargs)
+					));
+		/* Q:: could this be cached after one call so we do not do it every time? */
+		show_chunks_sql_oid = funclist->oid;
+		fmgr_info(show_chunks_sql_oid, &show_chunks_fmgrinfo);
 		InitFunctionCallInfoData(_fcinfo, &show_chunks_fmgrinfo, show_chunks_sql_nargs, InvalidOid, NULL, NULL);
 		MemSet(&rsinfo, 0, sizeof(rsinfo));
 		rsinfo.type = T_ReturnSetInfo;
@@ -163,7 +181,7 @@ show_chunks_relay(PG_FUNCTION_ARGS)
 		}
 
 		/* only arg_type_list is looked at so the rest are kind of not relevant; */
-		func_expr = makeFuncExpr(FUNC_OID, InvalidOid, arg_type_list, InvalidOid, InvalidOid, 0);
+		func_expr = makeFuncExpr(show_chunks_sql_oid, InvalidOid, arg_type_list, InvalidOid, InvalidOid, 0);
 		_fcinfo.flinfo->fn_expr = (Node *)func_expr;
 		FunctionCallInvoke(&_fcinfo);
 

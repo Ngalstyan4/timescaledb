@@ -19,3 +19,4 @@ typedef.list
 **/GRTAGS
 **/GSYMS
 /.vs
+compile_commands.json
