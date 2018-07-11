@@ -123,11 +123,17 @@ BEGIN
 END
 $BODY$;
 
--- Show chunks older than an interval.
 CREATE OR REPLACE FUNCTION show_chunks(
-    hypertable_name  REGCLASS,
-    older_than anyelement = NULL,
-    newer_than anyelement = NULL
+    hypertable_name  REGCLASS = NULL,
+    older_than "any" = NULL,
+    newer_than "any" = NULL
+) RETURNS SETOF REGCLASS AS '@MODULE_PATHNAME@', 'show_chunks_relay'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION _timescaledb_internal.show_chunks_poly(
+    hypertable_name  REGCLASS = NULL,
+    older_than ANYELEMENT = NULL, -- 2^63 - 1
+    newer_than ANYELEMENT = NULL
 )
     RETURNS SETOF REGCLASS LANGUAGE PLPGSQL VOLATILE AS
 $BODY$
@@ -135,17 +141,17 @@ DECLARE
     older_than_time BIGINT;
     newer_than_time BIGINT;
 BEGIN
-    IF older_than IS NULL  AND newer_than IS NULL THEN
-        RAISE 'Both older_than and newer_than timestamps provided to drop_chunks cannot be null';
+    IF hypertable_name IS NOT NULL THEN
+        PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(older_than), hypertable_name, func_name => 'show_chunks');
+        PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(newer_than), hypertable_name, func_name => 'show_chunks');
+        SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_time;
+        SELECT _timescaledb_internal.time_to_internal(newer_than, pg_typeof(newer_than)) INTO newer_than_time;
     END IF;
-
-    PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(older_than), hypertable_name);
-    PERFORM  _timescaledb_internal.time_dim_type_check(pg_typeof(newer_than), hypertable_name);
-    SELECT _timescaledb_internal.time_to_internal(older_than, pg_typeof(older_than)) INTO older_than_time;
-    SELECT _timescaledb_internal.time_to_internal(newer_than, pg_typeof(newer_than)) INTO newer_than_time;
     RETURN QUERY SELECT _timescaledb_internal.show_chunks_impl(hypertable_name, older_than_time, newer_than_time);
 END
 $BODY$;
+
+
 -- Add a dimension (of partitioning) to a hypertable
 --
 -- main_table - OID of the table to add a dimension to

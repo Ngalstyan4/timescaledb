@@ -91,6 +91,7 @@ set(SOURCES
   chunk_insert_state.c
   constraint_aware_append.c
   copy.c
+  ddl_utils.c
   dimension.c
   dimension_slice.c
   dimension_vector.c

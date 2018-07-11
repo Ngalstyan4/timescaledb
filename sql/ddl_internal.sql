@@ -11,7 +11,7 @@ $BODY$;
 
 -- Show chunks older than the given timestamp.
 CREATE OR REPLACE FUNCTION _timescaledb_internal.show_chunks_impl(
-    hypertable_name REGCLASS,
+    hypertable_name REGCLASS = NULL,
     older_than_time BIGINT = NULL,
     newer_than_time BIGINT = NULL
 )
@@ -24,16 +24,6 @@ DECLARE
     _schema_name TEXT;
 BEGIN
 
-    IF older_than_time IS NULL AND newer_than_time IS NULL THEN
-        RAISE 'Cannot have both arguments to show_chunks be NULL';
-    END IF;
-    SELECT c.relname, n.nspname
-    FROM  pg_class c
-            LEFT JOIN pg_namespace n
-            ON n.oid = c.relnamespace
-    WHERE c.oid=hypertable_name::regclass
-    INTO _table_name, _schema_name;
-
     IF hypertable_name IS NOT NULL THEN
         SELECT COUNT(*)
         FROM _timescaledb_catalog.hypertable h
@@ -45,6 +35,13 @@ BEGIN
             RAISE 'hypertable % does not exist', _table_name -- Q:: should this be REGCLASS full name of the tabke instead?
             USING ERRCODE = 'IO001';
         END IF;
+
+        SELECT c.relname, n.nspname
+        FROM  pg_class c
+                LEFT JOIN pg_namespace n
+                ON n.oid = c.relnamespace
+        WHERE c.oid=hypertable_name::regclass
+        INTO _table_name, _schema_name;
     END IF;
 
     RETURN QUERY
@@ -124,7 +121,8 @@ $BODY$;
 CREATE OR REPLACE FUNCTION _timescaledb_internal.time_dim_type_check(
     given_type REGTYPE,
     table_name  NAME,
-    schema_name NAME
+    schema_name NAME,
+    func_name   NAME = 'drop_chunks'
 )
     RETURNS VOID LANGUAGE PLPGSQL STABLE AS
 $BODY$
@@ -144,7 +142,7 @@ BEGIN
         WHEN NO_DATA_FOUND THEN
             RAISE EXCEPTION 'No hypertables found';
         WHEN TOO_MANY_ROWS THEN
-            RAISE EXCEPTION 'Cannot use drop_chunks on multiple tables with different time types';
+            RAISE EXCEPTION 'Cannot use % on multiple tables with different time types', func_name;
     END;
 
     IF given_type IN ('int'::regtype, 'smallint'::regtype, 'bigint'::regtype ) THEN
@@ -153,7 +151,7 @@ BEGIN
         END IF;
     END IF;
     IF actual_type != given_type THEN
-        RAISE EXCEPTION 'Cannot call drop_chunks with a % on hypertables with a time type of: %', given_type, actual_type;
+        RAISE EXCEPTION 'Cannot call % with a % on hypertables with a time type of: %', func_name, given_type, actual_type;
     END IF;
 END
 $BODY$;
@@ -162,7 +160,8 @@ $BODY$;
 -- type chcker for show_chunks new type approach;
 CREATE OR REPLACE FUNCTION _timescaledb_internal.time_dim_type_check(
     given_type REGTYPE,
-    hypertable_name REGCLASS
+    hypertable_name REGCLASS,
+    func_name   NAME = 'drop_chunks'
 )
     RETURNS VOID LANGUAGE PLPGSQL STABLE AS
 $BODY$
@@ -177,7 +176,7 @@ BEGIN
                 ON n.oid = c.relnamespace
     WHERE c.oid=hypertable_name::REGCLASS
     INTO _table_name, _schema_name;
-    PERFORM _timescaledb_internal.time_dim_type_check(given_type, _table_name, _schema_name);
+    PERFORM _timescaledb_internal.time_dim_type_check(given_type, _table_name, _schema_name, func_name);
 END
 $BODY$;
 
