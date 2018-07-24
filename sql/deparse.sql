@@ -1,4 +1,0 @@
-CREATE OR REPLACE FUNCTION _timescaledb_internal.deparse_test(tablename REGCLASS)
-RETURNS TEXT
-AS '@MODULE_PATHNAME@', 'deparse_test'
-LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;

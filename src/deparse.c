@@ -88,13 +88,13 @@ ct_deparse_columns(StringInfo qs, Relation table_rel)
 	int			attrs_sofar = 0;
 
 	Assert(true);
-//TODO::Q::some kind of validaiton for qs
-		?
-			if (table_rel->rd_rel->relkind != RELKIND_RELATION)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("argument having OID %d is not a table but is %c",
-							reloid, table_rel->rd_rel->relkind)));
+/*TODO::Q::some kind of validaiton for qs?*/
+
+	if (table_rel->rd_rel->relkind != RELKIND_RELATION)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("argument having OID %d is not a table but is %c",
+						reloid, table_rel->rd_rel->relkind)));
 
 	rel_descr = RelationGetDescr(table_rel);
 	pg_type = relation_open(TypeRelationId, AccessShareLock);
@@ -132,8 +132,8 @@ ct_deparse_columns(StringInfo qs, Relation table_rel)
 		 */
 		dim_iter = 0;
 		while (++dim_iter < attr.attndims)
-			//first pair of[] comes from pg_type
-				appendStringInfoString(qs, "[]");
+			/* first pair of[] comes from pg_type */
+			appendStringInfoString(qs, "[]");
 
 		/*
 		 * technically the second condition is not necessary but this is to

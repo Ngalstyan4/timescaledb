@@ -1,3 +1,9 @@
+\c single :ROLE_SUPERUSER
+CREATE OR REPLACE FUNCTION test.deparse(tablename REGCLASS)
+RETURNS TEXT
+AS :MODULE_PATHNAME, 'deparse_test'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+\c single :ROLE_DEFAULT_PERM_USER
 \ir include/deparse_load.sql
 \c single :ROLE_SUPERUSER
 CREATE SCHEMA IF NOT EXISTS "customSchema" AUTHORIZATION :ROLE_DEFAULT_PERM_USER;
@@ -49,15 +55,10 @@ CREATE TABLE "customSchema"."ha ha" ("ti me" timestamp without time zone, temp f
 \o
 -- turn off alignment to avoid + signs at the end of lines
 \a
--- tunr off headers
+-- turn off headers
 \t
-SELECT format('DROP TABLE public.test1; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test1');
-DROP TABLE public.test1; CREATE TABLE public.test1
- (
-	"time" timestamp without time zone,
-	temp double precision
-);
-
+\o /dev/null
+SELECT format('DROP TABLE public.test1; %s', deparse) FROM test.deparse('public.test1');
 \gexec
 DROP TABLE public.test1; CREATE TABLE public.test1
  (
@@ -65,31 +66,15 @@ DROP TABLE public.test1; CREATE TABLE public.test1
 	temp double precision
 );
 
-SELECT format('DROP TABLE public.test2; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test2');
-DROP TABLE public.test2; CREATE TABLE public.test2
- (
-	"time" timestamp without time zone NOT NULL,
-	temp double precision
-);
-
+SELECT format('DROP TABLE public.test2; %s ;-- ss', deparse) FROM test.deparse('public.test2');
 \gexec
 DROP TABLE public.test2; CREATE TABLE public.test2
  (
 	"time" timestamp without time zone NOT NULL,
 	temp double precision
 );
-
-SELECT format('DROP TABLE public.test3; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test3');
-DROP TABLE public.test3; CREATE TABLE public.test3
- (
-	"time" timestamp without time zone NOT NULL,
-	temp double precision NOT NULL,
-	temp2 integer[],
-	temp3 integer[][],
-	temp4 integer[][][],
-	temp5 integer[][]
-);
-
+ ;-- ss
+SELECT format('DROP TABLE public.test3; %s', deparse) FROM test.deparse('public.test3');
 \gexec
 DROP TABLE public.test3; CREATE TABLE public.test3
  (
@@ -101,15 +86,7 @@ DROP TABLE public.test3; CREATE TABLE public.test3
 	temp5 integer[][]
 );
 
-SELECT format('DROP TABLE public.test4; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test4');
-DROP TABLE public.test4; CREATE TABLE public.test4
- (
-	"time" timestamp without time zone,
-	device integer NOT NULL,
-	temp double precision
-);
-ALTER TABLE public.test4 ADD CONSTRAINT test4_pkey PRIMARY KEY (device);
-
+SELECT format('DROP TABLE public.test4; %s', deparse) FROM test.deparse('public.test4');
 \gexec
 DROP TABLE public.test4; CREATE TABLE public.test4
  (
@@ -119,14 +96,7 @@ DROP TABLE public.test4; CREATE TABLE public.test4
 );
 ALTER TABLE public.test4 ADD CONSTRAINT test4_pkey PRIMARY KEY (device);
 
-SELECT format('DROP TABLE public.test5; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test5');
-DROP TABLE public.test5; CREATE TABLE public.test5
- (
-	"time" timestamp without time zone,
-	name character(30) NOT NULL,
-	vname character varying
-);
-
+SELECT format('DROP TABLE public.test5; %s', deparse) FROM test.deparse('public.test5');
 \gexec
 DROP TABLE public.test5; CREATE TABLE public.test5
  (
@@ -135,17 +105,7 @@ DROP TABLE public.test5; CREATE TABLE public.test5
 	vname character varying
 );
 
-SELECT format('DROP TABLE public.test6; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test6');
-DROP TABLE public.test6; CREATE TABLE public.test6
- (
-	"time" timestamp without time zone NOT NULL,
-	num integer NOT NULL DEFAULT 48,
-	n integer DEFAULT 455454,
-	tt pg_catalog.text,
-	tt_col pg_catalog.text COLLATE "es_ES",
-	tt_def_col pg_catalog.text DEFAULT ('ա'::text COLLATE "hy_AM")
-);
-
+SELECT format('DROP TABLE public.test6; %s', deparse) FROM test.deparse('public.test6');
 \gexec
 DROP TABLE public.test6; CREATE TABLE public.test6
  (
@@ -157,18 +117,7 @@ DROP TABLE public.test6; CREATE TABLE public.test6
 	tt_def_col pg_catalog.text DEFAULT ('ա'::text COLLATE "hy_AM")
 );
 
-SELECT format('DROP TABLE public.test7; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test7');
-DROP TABLE public.test7; CREATE TABLE public.test7
- (
-	time_start timestamp without time zone NOT NULL,
-	time_end timestamp without time zone NOT NULL,
-	val_min integer,
-	val_max integer
-);
-ALTER TABLE public.test7 ADD CONSTRAINT test7_check2 CHECK ((val_max > val_min));
-ALTER TABLE public.test7 ADD CONSTRAINT test7_check1 CHECK ((val_min < val_max));
-ALTER TABLE public.test7 ADD CONSTRAINT test7_check CHECK ((time_end >= time_start));
-
+SELECT format('DROP TABLE public.test7; %s', deparse) FROM test.deparse('public.test7');
 \gexec
 DROP TABLE public.test7; CREATE TABLE public.test7
  (
@@ -181,20 +130,7 @@ ALTER TABLE public.test7 ADD CONSTRAINT test7_check2 CHECK ((val_max > val_min))
 ALTER TABLE public.test7 ADD CONSTRAINT test7_check1 CHECK ((val_min < val_max));
 ALTER TABLE public.test7 ADD CONSTRAINT test7_check CHECK ((time_end >= time_start));
 
-SELECT format('DROP TABLE public.test8; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test8');
-DROP TABLE public.test8; CREATE TABLE public.test8
- (
-	time_start timestamp without time zone NOT NULL,
-	time_end timestamp without time zone NOT NULL,
-	val_min integer,
-	val_max integer
-);
-ALTER TABLE public.test8 ADD CONSTRAINT test8_time_end_key UNIQUE (time_end);
-ALTER TABLE public.test8 ADD CONSTRAINT test8_pkey PRIMARY KEY (time_start);
-ALTER TABLE public.test8 ADD CONSTRAINT test8_check1 CHECK ((val_min < val_max));
-ALTER TABLE public.test8 ADD CONSTRAINT min_less_max CHECK ((val_min < val_max));
-ALTER TABLE public.test8 ADD CONSTRAINT test8_check CHECK ((time_end >= time_start));
-
+SELECT format('DROP TABLE public.test8; %s', deparse) FROM test.deparse('public.test8');
 \gexec
 DROP TABLE public.test8; CREATE TABLE public.test8
  (
@@ -209,15 +145,7 @@ ALTER TABLE public.test8 ADD CONSTRAINT test8_check1 CHECK ((val_min < val_max))
 ALTER TABLE public.test8 ADD CONSTRAINT min_less_max CHECK ((val_min < val_max));
 ALTER TABLE public.test8 ADD CONSTRAINT test8_check CHECK ((time_end >= time_start));
 
-SELECT format('DROP TABLE public.test9; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test9');
-DROP TABLE public.test9; CREATE TABLE public.test9
- (
-	time_start timestamp without time zone NOT NULL,
-	val_min integer,
-	val_max integer
-);
-ALTER TABLE public.test9 ADD CONSTRAINT cnstr CHECK ((val_min < val_max));
-
+SELECT format('DROP TABLE public.test9; %s', deparse) FROM test.deparse('public.test9');
 \gexec
 DROP TABLE public.test9; CREATE TABLE public.test9
  (
@@ -227,15 +155,7 @@ DROP TABLE public.test9; CREATE TABLE public.test9
 );
 ALTER TABLE public.test9 ADD CONSTRAINT cnstr CHECK ((val_min < val_max));
 
-SELECT format('DROP TABLE public.test10; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test10');
-DROP TABLE public.test10; CREATE TABLE public.test10
- (
-	time_start timestamp without time zone NOT NULL,
-	"strange name" pg_catalog.text DEFAULT 'multiword name'::text,
-	"Странное название" integer
-);
-ALTER TABLE public.test10 ADD CONSTRAINT "test10_strange name_check" CHECK (("strange name" <> 'specific case here'::text));
-
+SELECT format('DROP TABLE public.test10; %s', deparse) FROM test.deparse('public.test10');
 \gexec
 DROP TABLE public.test10; CREATE TABLE public.test10
  (
@@ -245,15 +165,7 @@ DROP TABLE public.test10; CREATE TABLE public.test10
 );
 ALTER TABLE public.test10 ADD CONSTRAINT "test10_strange name_check" CHECK (("strange name" <> 'specific case here'::text));
 
-SELECT format('DROP TABLE public.test12; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test12');
-DROP TABLE public.test12; CREATE TABLE public.test12
- (
-	"time" timestamp without time zone,
-	blah timestamp without time zone
-);
-ALTER TABLE public.test12 ADD CONSTRAINT test12_blah_fkey FOREIGN KEY (blah) REFERENCES test11(time_start);
-ALTER TABLE public.test12 ADD CONSTRAINT test12_time_fkey FOREIGN KEY ("time") REFERENCES test11(time_start);
-
+SELECT format('DROP TABLE public.test12; %s', deparse) FROM test.deparse('public.test12');
 \gexec
 DROP TABLE public.test12; CREATE TABLE public.test12
  (
@@ -263,13 +175,7 @@ DROP TABLE public.test12; CREATE TABLE public.test12
 ALTER TABLE public.test12 ADD CONSTRAINT test12_blah_fkey FOREIGN KEY (blah) REFERENCES test11(time_start);
 ALTER TABLE public.test12 ADD CONSTRAINT test12_time_fkey FOREIGN KEY ("time") REFERENCES test11(time_start);
 
-SELECT format('DROP TABLE public.test13; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test13');
-DROP TABLE public.test13; CREATE TABLE public.test13
- (
-	"time" timestamp without time zone
-);
-ALTER TABLE public.test13 ADD CONSTRAINT test13_time_fkey FOREIGN KEY ("time") REFERENCES test11(time_start);
-
+SELECT format('DROP TABLE public.test13; %s', deparse) FROM test.deparse('public.test13');
 \gexec
 DROP TABLE public.test13; CREATE TABLE public.test13
  (
@@ -277,13 +183,7 @@ DROP TABLE public.test13; CREATE TABLE public.test13
 );
 ALTER TABLE public.test13 ADD CONSTRAINT test13_time_fkey FOREIGN KEY ("time") REFERENCES test11(time_start);
 
-SELECT format('DROP TABLE public.test11 CASCADE; %s', deparse_test) FROM _timescaledb_internal.deparse_test('public.test11');
-DROP TABLE public.test11 CASCADE; CREATE TABLE public.test11
- (
-	time_start timestamp without time zone NOT NULL
-);
-ALTER TABLE public.test11 ADD CONSTRAINT test11_pkey PRIMARY KEY (time_start);
-
+SELECT format('DROP TABLE public.test11 CASCADE; %s', deparse) FROM test.deparse('public.test11');
 \gexec
 DROP TABLE public.test11 CASCADE; CREATE TABLE public.test11
  (
@@ -298,13 +198,7 @@ CREATE TABLE test12 (
     blah TIMESTAMP REFERENCES test11(time_start)
 );
 CREATE TABLE test13 (time TIMESTAMP, FOREIGN KEY (time) REFERENCES test11(time_start));
-SELECT format('DROP TABLE "customSchema".test14; %s', deparse_test) FROM _timescaledb_internal.deparse_test('"customSchema".test14');
-DROP TABLE "customSchema".test14; CREATE TABLE "customSchema".test14
- (
-	"time" timestamp without time zone,
-	temp double precision
-);
-
+SELECT format('DROP TABLE "customSchema".test14; %s', deparse) FROM test.deparse('"customSchema".test14');
 \gexec
 DROP TABLE "customSchema".test14; CREATE TABLE "customSchema".test14
  (
@@ -312,13 +206,7 @@ DROP TABLE "customSchema".test14; CREATE TABLE "customSchema".test14
 	temp double precision
 );
 
-SELECT format('DROP TABLE "customSchema"."ha ha"; %s', deparse_test) FROM _timescaledb_internal.deparse_test('"customSchema"."ha ha"');
-DROP TABLE "customSchema"."ha ha"; CREATE TABLE "customSchema"."ha ha"
- (
-	"ti me" timestamp without time zone,
-	temp double precision
-);
-
+SELECT format('DROP TABLE "customSchema"."ha ha"; %s', deparse) FROM test.deparse('"customSchema"."ha ha"');
 \gexec
 DROP TABLE "customSchema"."ha ha"; CREATE TABLE "customSchema"."ha ha"
  (
