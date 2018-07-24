@@ -1,0 +1,3 @@
+SET client_min_messages = 'fatal';
+\set ECHO none
+\! diff -y --suppress-common-lines  -W 240 ${TEST_OUTPUT_DIR}/results/deparse_create.out ${TEST_OUTPUT_DIR}/results/deparse_recreate.out

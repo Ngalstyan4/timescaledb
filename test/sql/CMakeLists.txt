@@ -17,7 +17,7 @@ set(TEST_FILES
   ddl_single.sql
   ddl.sql
   delete.sql
-  deparse.sql
+  deparse_diff.sql
   drop_schema.sql
   drop_owned.sql
   drop_chunks.sql

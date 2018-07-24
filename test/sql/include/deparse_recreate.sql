@@ -4,16 +4,9 @@ RETURNS TEXT
 AS :MODULE_PATHNAME, 'deparse_test'
 LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 \c single :ROLE_DEFAULT_PERM_USER
+SET client_min_messages = 'fatal';
 
-\ir include/deparse_load.sql
-\o :TEST_OUTPUT_DIR/results/deparse_reference.out
-\d+ (public|"customSchema").*
-\o
--- turn off alignment to avoid + signs at the end of lines
-\a
--- turn off headers
-\t
-\o /dev/null
+
 SELECT format('DROP TABLE public.test1; %s', deparse) FROM test.deparse('public.test1');
 \gexec
 SELECT format('DROP TABLE public.test2; %s ;-- ss', deparse) FROM test.deparse('public.test2');
@@ -52,12 +45,3 @@ SELECT format('DROP TABLE "customSchema".test14; %s', deparse) FROM test.deparse
 \gexec
 SELECT format('DROP TABLE "customSchema"."ha ha"; %s', deparse) FROM test.deparse('"customSchema"."ha ha"');
 \gexec
-
-
-\a
-\t
-\o :TEST_OUTPUT_DIR/results/deparse_test.out
-\d+ (public|"customSchema").*
-\o
-
-\! diff ${TEST_OUTPUT_DIR}/results/deparse_reference.out ${TEST_OUTPUT_DIR}/results/deparse_test.out
