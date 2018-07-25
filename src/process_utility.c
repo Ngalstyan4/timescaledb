@@ -872,6 +872,22 @@ process_altertable_drop_not_null(Hypertable *ht, AlterTableCmd *cmd)
 	}
 }
 
+static void
+process_altertable_drop_column(Hypertable *ht, AlterTableCmd *cmd)
+{
+	int			i;
+
+	for (i = 0; i < ht->space->num_dimensions; i++)
+	{
+		Dimension  *dim = &ht->space->dimensions[i];
+
+		if (strncmp(NameStr(dim->fd.column_name), cmd->name, NAMEDATALEN) == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_OPERATION_NOT_SUPPORTED),
+					 errmsg("cannot drop a partitioning column")));
+	}
+}
+
 /* process all regular-table alter commands to make sure they aren't adding
  * foreign-key constraints to hypertables */
 static void
@@ -1435,6 +1451,28 @@ process_altertable_start_table(Node *parsetree)
 			case AT_DropNotNull:
 				if (ht != NULL)
 					process_altertable_drop_not_null(ht, cmd);
+				break;
+			case AT_AddColumn:
+			case AT_AddColumnRecurse:
+				{
+					ColumnDef  *col;
+					ListCell   *cnstr_cell;
+
+					Assert(IsA(cmd->def, ColumnDef));
+					col = (ColumnDef *) cmd->def;
+
+					if (NULL == ht)
+						foreach(cnstr_cell, col->constraints)
+							verify_constraint_plaintable(stmt->relation, lfirst(cnstr_cell));
+					else
+						foreach(cnstr_cell, col->constraints)
+							verify_constraint_hypertable(ht, lfirst(cnstr_cell));
+					break;
+				}
+			case AT_DropColumn:
+			case AT_DropColumnRecurse:
+				if (NULL != ht)
+					process_altertable_drop_column(ht, cmd);
 				break;
 			case AT_AddConstraint:
 			case AT_AddConstraintRecurse:
