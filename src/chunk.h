@@ -44,6 +44,8 @@ typedef struct Chunk
 	ChunkConstraints *constraints;
 } Chunk;
 
+typedef struct Chunks Chunks;
+
 /*
  * ChunkScanCtx is used to scan for chunks in a hypertable's N-dimensional
  * hyperspace.
@@ -72,6 +74,7 @@ extern Chunk *chunk_create(Hypertable *ht, Point *p, const char *schema, const c
 extern Chunk *chunk_create_stub(int32 id, int16 num_constraints);
 extern void chunk_free(Chunk *chunk);
 extern Chunk *chunk_find(Hyperspace *hs, Point *p);
+extern Chunks *chunks_find_all_in_range_limit(Hyperspace *hs, StrategyNumber start_strategy, int64 start_value, StrategyNumber end_strategy, int64 end_value, int limit);
 extern List *chunk_find_all_oids(Hyperspace *hs, List *dimension_vecs, LOCKMODE lockmode);
 extern Chunk *chunk_copy(Chunk *chunk);
 extern Chunk *chunk_get_by_name_with_memory_context(const char *schema_name, const char *table_name, int16 num_constraints, MemoryContext mctx, bool fail_if_not_found);
@@ -87,6 +90,13 @@ extern bool chunk_set_name(Chunk *chunk, const char *newname);
 extern bool chunk_set_schema(Chunk *chunk, const char *newschema);
 extern List *chunk_get_window(int32 dimension_id, int64 point, int count, MemoryContext mctx);
 extern void chunks_rename_schema_name(char *old_schema, char *new_schema);
+extern Chunks *chunks_alloc(int capcacity);
+extern void chunks_free(Chunks *chunks);
+extern void chunks_add(Chunks *chunks, Chunk *chunk_src);
+extern int	chunks_length(Chunks *chunks);
+extern Chunk *chunks_get_nth(Chunks *chunks, int n);
+extern void chunks_sort(Chunks *chunks);
+extern Chunks *chunks_addall(Chunks *src, Chunks *tbadded);
 
 #define chunk_get_by_name(schema_name, table_name, num_constraints, fail_if_not_found) \
 	chunk_get_by_name_with_memory_context(schema_name, table_name, num_constraints, \

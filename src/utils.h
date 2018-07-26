@@ -15,11 +15,21 @@
 
 
 extern bool type_is_int8_binary_compatible(Oid sourcetype);
+#include "compat.h"
+
+#if PG96
+extern int	oid_cmp(const void *p1, const void *p2);
+#endif
 
 /*
  * Convert a column value into the internal time representation.
  */
 extern int64 time_value_to_internal(Datum time_val, Oid type, bool failure_ok);
+
+/*
+ * Convert the difference of interval and current timestamp to internal representation
+ */
+extern int64 interval_from_now_to_internal(Datum time_val, Oid type);
 
 /*
  * Return the period in microseconds of the first argument to date_trunc.
