@@ -585,15 +585,6 @@ interval_to_usec(Interval *interval)
 		+ interval->time;
 }
 
-#define IS_INTEGER_TYPE(type)							\
-	(type == INT2OID || type == INT4OID || type == INT8OID)
-
-#define IS_TIMESTAMP_TYPE(type)									\
-	(type == TIMESTAMPOID || type == TIMESTAMPTZOID || type == DATEOID)
-
-#define IS_VALID_OPEN_DIM_TYPE(type)					\
-	(IS_INTEGER_TYPE(type) || IS_TIMESTAMP_TYPE(type))
-
 #define INT_TYPE_MAX(type)												\
 	(int64)((type == INT2OID) ? INT16_MAX : ((type == INT4OID) ? INT32_MAX : INT64_MAX))
 
@@ -982,11 +973,17 @@ dimension_add(PG_FUNCTION_ARGS)
 				 errmsg("table \"%s\" is not a hypertable",
 						get_rel_name(info.table_relid))));
 
-	if ((!info.num_slices_is_set && !OidIsValid(info.interval_type)) ||
-		(info.num_slices_is_set && OidIsValid(info.interval_type)))
+	if (info.num_slices_is_set && OidIsValid(info.interval_type))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot specify both the number of partitions and an interval")));
+				 errmsg("cannot specify both the number of partitions and an interval")
+				 ));
+
+	if (!info.num_slices_is_set && !OidIsValid(info.interval_type))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot omit both the number of partitions and the interval")
+				 ));
 
 	dimension_validate_info(&info);
 

@@ -11,7 +11,6 @@
 
 typedef struct SubspaceStore SubspaceStore;
 typedef struct Chunk Chunk;
-typedef struct HeapTupleData *HeapTuple;
 
 typedef struct Hypertable
 {
@@ -23,6 +22,7 @@ typedef struct Hypertable
 
 
 extern Oid	rel_get_owner(Oid relid);
+extern int	hypertable_get_all(List **result, MemoryContext mctx);
 extern Hypertable *hypertable_get_by_id(int32 hypertable_id);
 extern Hypertable *hypertable_get_by_name(char *schema, char *name);
 extern bool hypertable_has_privs_of(Oid hypertable_oid, Oid userid);

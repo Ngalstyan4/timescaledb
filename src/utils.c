@@ -19,6 +19,8 @@
 #include <utils/syscache.h>
 #include <utils/relcache.h>
 #include <utils/fmgroids.h>
+#include <access/xact.h>
+#include <funcapi.h>
 
 #include "utils.h"
 #include "compat.h"
@@ -170,7 +172,7 @@ time_to_internal(PG_FUNCTION_ARGS)
 }
 
 
-/*	*/
+/* Convert valid timescale time column type to internal representation */
 int64
 time_value_to_internal(Datum time_val, Oid type_oid, bool failure_ok)
 {
@@ -205,8 +207,81 @@ time_value_to_internal(Datum time_val, Oid type_oid, bool failure_ok)
 			return DatumGetInt64(res);
 		default:
 			if (!failure_ok)
-				elog(ERROR, "unkown time type OID %d", type_oid);
+				elog(ERROR, "unknown time type OID %d", type_oid);
 			return -1;
+	}
+}
+
+/*
+ * Convert the difference of interval and current timestamp to internal representation
+ * This function interprets the interval as distance in time dimension to the past.
+ * Depending on the type of hypertable type column, the function applied the
+ * necessary granularity to now() - interval and converts the resulting
+ * time to internal int64 representation
+ */
+int64
+interval_from_now_to_internal(Datum interval, Oid type_oid)
+{
+	TimestampTz now;
+	Datum		res;
+
+	/*
+	 * This is really confusing but looks like it is how postgres works. Event
+	 * though there is a function called Datum now() that calls
+	 * GetCurrentTransactionStartTimestamp and returns TimestampTz, that is
+	 * not the same as now() function in SQL and even though return type is
+	 * Timestamp WITH TIMEZONE, GetCurrentTransactionStartTimestamp does not
+	 * incorporate current session timezone infromation in the returned value.
+	 * In order to take this timezone value set by the user into account, I
+	 * convert timestamp to POSIX time structure using timestamp2tm *which has
+	 * access to current timezone* setting through session_timezone variable
+	 * and incorporates it in the returned structure. I then convert it back
+	 * to TimestampTz through a similar function which takes this timezone
+	 * information int account.
+	 */
+	int			tzoff;
+	struct pg_tm tm;
+	fsec_t		fsec;
+	const char *tzn;
+
+	timestamp2tm(GetCurrentTransactionStartTimestamp(),
+				 &tzoff, &tm, &fsec, &tzn, NULL);
+	tm2timestamp(&tm, fsec, NULL, &now);
+
+	switch (type_oid)
+	{
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			res = TimestampTzGetDatum(now);
+			res = DirectFunctionCall2(timestamptz_mi_interval, res, interval);
+
+			return time_value_to_internal(res, type_oid, false);
+		case DATEOID:
+			res = TimestampTzGetDatum(now);
+
+			res = DirectFunctionCall2(timestamptz_mi_interval, res, interval);
+			res = DirectFunctionCall1(timestamp_date, res);
+
+			return time_value_to_internal(res, type_oid, false);
+		case INT8OID:
+		case INT4OID:
+		case INT2OID:
+
+			/*
+			 * should never get here as the case is handled by
+			 * time_dim_typecheck
+			 */
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("can only use this with an INTERVAL for "
+							"TIMESTAMP, TIMESTAMPTZ, and DATE types")
+					 ));
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unknown time type OID %d", type_oid)
+					 ));
+
 	}
 }
 
@@ -481,4 +556,58 @@ inheritance_parent_relid(Oid relid)
 	heap_close(catalog, AccessShareLock);
 
 	return parent;
+}
+
+/*
+ * this is a helper functoin that takes a list of Datum
+ * objects as argument and returns these as a
+ * set returning function(SRF). Note that
+ * the caller needs to be registered as a
+ * set returning function for this to work.
+ */
+Datum
+srf_return_list(FunctionCallInfo fcinfo)
+{
+	FuncCallContext *funcctx;
+	int			call_cntr;
+	int			max_calls;
+	TupleDesc	tupdesc;
+	AttInMetadata *attinmeta;
+	List	   *result_set;
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+
+		/* Build a tuple descriptor for our result type */
+		/* not quite necessary */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_SCALAR)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("function returning record called in context "
+							"that cannot accept type record")));
+
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+
+	call_cntr = funcctx->call_cntr;
+	max_calls = funcctx->max_calls;
+	attinmeta = funcctx->attinmeta;
+	result_set = (List *) funcctx->user_fctx;
+
+	/* do when there is more left to send */
+	if (call_cntr < list_length(result_set))
+	{
+		Datum		result;
+
+		result = ObjectIdGetDatum(list_nth_oid(result_set, call_cntr));
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+	else						/* do when there is no more left */
+	{
+		SRF_RETURN_DONE(funcctx);
+	}
 }

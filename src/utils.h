@@ -13,6 +13,11 @@
 extern int64 time_value_to_internal(Datum time_val, Oid type, bool failure_ok);
 
 /*
+ * Convert the difference of interval and current timestamp to internal representation
+ */
+extern int64 interval_from_now_to_internal(Datum time_val, Oid type);
+
+/*
  * Return the period in microseconds of the first argument to date_trunc.
  * This is approximate -- to be used for planning;
  */
@@ -38,6 +43,8 @@ extern Oid	inheritance_parent_relid(Oid relid);
 
 #define is_inheritance_table(relid) \
     (is_inheritance_child(relid) || is_inheritance_parent(relid))
+
+Datum		srf_return_list(FunctionCallInfo fcinfo);
 
 #define DATUM_GET(values, attno) \
 	values[attno-1]

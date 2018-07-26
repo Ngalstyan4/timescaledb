@@ -94,6 +94,15 @@ typedef struct DimensionInfo
 	 (di)->colname != NULL &&											\
 	 ((di)->num_slices_is_set || OidIsValid((di)->interval_datum)))
 
+#define IS_INTEGER_TYPE(type)							\
+	(type == INT2OID || type == INT4OID || type == INT8OID)
+
+#define IS_TIMESTAMP_TYPE(type)									\
+	(type == TIMESTAMPOID || type == TIMESTAMPTZOID || type == DATEOID)
+
+#define IS_VALID_OPEN_DIM_TYPE(type)					\
+	(IS_INTEGER_TYPE(type) || IS_TIMESTAMP_TYPE(type))
+
 extern Hyperspace *dimension_scan(int32 hypertable_id, Oid main_table_relid, int16 num_dimension, MemoryContext mctx);
 extern DimensionSlice *dimension_calculate_default_slice(Dimension *dim, int64 value);
 extern Point *hyperspace_calculate_point(Hyperspace *h, HeapTuple tuple, TupleDesc tupdesc);

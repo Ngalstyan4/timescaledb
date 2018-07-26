@@ -18,6 +18,14 @@
 #include <utils/hsearch.h>
 #include <storage/lmgr.h>
 #include <miscadmin.h>
+#include <funcapi.h>
+#include <fmgr.h>
+#include <utils/datum.h>
+#include <catalog/pg_type.h>
+#include <utils/timestamp.h>
+#include <nodes/execnodes.h>
+#include <executor/executor.h>
+#include <access/tupdesc.h>
 
 #include "chunk.h"
 #include "chunk_index.h"
@@ -33,9 +41,12 @@
 #include "trigger.h"
 #include "compat.h"
 #include "utils.h"
+#include "hypertable_cache.h"
+#include "cache.h"
+
+TS_FUNCTION_INFO_V1(chunk_show_chunks);
 
 typedef bool (*on_chunk_func) (ChunkScanCtx *ctx, Chunk *chunk);
-
 static void chunk_scan_ctx_init(ChunkScanCtx *ctx, Hyperspace *hs, Point *p);
 static void chunk_scan_ctx_destroy(ChunkScanCtx *ctx);
 static void chunk_collision_scan(ChunkScanCtx *scanctx, Hypercube *cube);
@@ -833,6 +844,13 @@ set_complete_chunk(ChunkScanCtx *scanctx, Chunk *chunk)
 	return false;
 }
 
+static bool
+set_all_chunks(ChunkScanCtx *scanctx, Chunk *chunk)
+{
+	scanctx->data = lappend(scanctx->data, chunk);
+	return true;
+}
+
 /* Finds the first chunk that has a complete set of constraints. There should be
  * only one such chunk in the scan context when scanning for the chunk that
  * holds a particular tuple/point. */
@@ -842,6 +860,21 @@ chunk_scan_ctx_get_chunk(ChunkScanCtx *ctx)
 	ctx->data = NULL;
 
 	chunk_scan_ctx_foreach_chunk(ctx, set_complete_chunk, 1);
+
+	return ctx->data;
+}
+
+/* Gets all the chunks from the given scan context. Used for time constraint
+ * elimination and that is why we don't care about constraints in
+ * other dimensions.
+ * Returns NIL if no chunks were found. Returns the list of Chunk* objects
+ * otherwise.
+ */
+static List *
+chunk_scan_ctx_get_all_chunks(ChunkScanCtx *ctx)
+{
+	ctx->data = NIL;
+	chunk_scan_ctx_foreach_chunk(ctx, set_all_chunks, -1);
 
 	return ctx->data;
 }
@@ -905,6 +938,65 @@ chunk_find(Hyperspace *hs, Point *p)
 	return chunk;
 }
 
+/*
+ * Find all the chunks in hyperspace that include
+ * elements(dimension slices) calculated by given range constraints.
+*/
+List *
+chunks_find_all_in_range_limit(Hyperspace *hs, StrategyNumber start_strategy, int64 start_value, StrategyNumber end_strategy, int64 end_value, int limit)
+{
+	List	   *chunks;
+	ChunkScanCtx ctx;
+	DimensionVec *slices;
+	Dimension  *time_dim;
+
+	Assert(hs != NULL);
+
+	time_dim = hyperspace_get_open_dimension(hs, 0);
+	/* must have been checked earlier that this is the case */
+	Assert(time_dim != NULL);
+
+	slices = dimension_slice_scan_range_limit(
+											  time_dim->fd.id,
+											  start_strategy,
+											  start_value,
+											  end_strategy,
+											  end_value,
+											  limit);
+
+	/* The scan context will keep the state accumulated during the scan */
+	chunk_scan_ctx_init(&ctx, hs, NULL);
+
+	/* No abort when the first chunk is found */
+	ctx.early_abort = false;
+
+	/* Scan for chunks that are in range */
+	dimension_slice_and_chunk_constraint_join(&ctx, slices);
+
+	/* Get all the chunks from the context */
+	chunk_scan_ctx_get_all_chunks(&ctx);
+	chunks = ctx.data;
+
+	chunk_scan_ctx_destroy(&ctx);
+	if (NULL != chunks)
+	{
+		/* Fill in the rest of the chunk's data from the chunk table */
+		ListCell   *lc;
+
+		foreach(lc, chunks)
+		{
+			Chunk	   *chunk = (Chunk *) lfirst(lc);
+
+			chunk_fill_stub(chunk, false);
+			chunk->constraints = chunk_constraint_scan_by_chunk_id(chunk->fd.id,
+																   hs->num_dimensions,
+																   CurrentMemoryContext);
+		}
+	}
+
+	return chunks;
+}
+
 static bool
 append_chunk_oid(ChunkScanCtx *scanctx, Chunk *chunk)
 {
@@ -919,6 +1011,77 @@ append_chunk_oid(ChunkScanCtx *scanctx, Chunk *chunk)
 
 	scanctx->data = lappend_oid(scanctx->data, chunk->table_id);
 	return true;
+}
+
+/* A utility function to check that the argument type passed to be
+ * used/compared with a hypertable time column is valid
+ * The argument is valid if
+ * 	-	it is an INTEGER type and time column of hypertable is also INTEGER
+ * 	-	it is an INTERVAL and time column of hypertable is time or date
+ * 	-	it is the same as time column of hypertable
+ */
+static void
+time_dim_typecheck(Oid arg_type, Oid time_column_type, char *caller_name)
+{
+	AssertArg(arg_type != InvalidOid);
+	AssertArg(IS_VALID_OPEN_DIM_TYPE(time_column_type));
+
+	if (IS_INTEGER_TYPE(time_column_type) && IS_INTEGER_TYPE(arg_type))
+		return;
+
+	if (arg_type == INTERVALOID)
+	{
+		if (IS_INTEGER_TYPE(time_column_type))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("can only use %s with an INTERVAL"
+							" for TIMESTAMP, TIMESTAMPTZ, and DATE types",
+							caller_name)
+					 ));
+		return;
+	}
+
+	if (!IS_VALID_OPEN_DIM_TYPE(arg_type))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("time constraint arguments of %s should "
+						"have one of acceptable time column types: "
+						"SMALLINT, INT, BIGINT, TIMESTAMP, TIMESTAMPTZ, DATE",
+						caller_name)
+				 ));
+	}
+
+	if (arg_type != time_column_type)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("time constraint arguments of %s should "
+						"have same type as time column of the hypertable",
+						caller_name)
+				 ));
+}
+
+static List *
+sort_oid_list(List *oid_list)
+{
+
+	int			i = 0;
+	ListCell   *lc;
+	Oid		   *result_array;
+	int			oid_list_len = list_length(oid_list);
+
+	result_array = palloc(sizeof(Oid) * oid_list_len);
+
+	foreach(lc, oid_list)
+		result_array[i++] = DatumGetObjectId(lfirst_oid(lc));
+	oid_list = NIL;
+
+	qsort(result_array, oid_list_len, sizeof(Oid), oid_cmp);
+
+	for (i = 0; i < oid_list_len; i++)
+		oid_list = lappend_oid(oid_list, ObjectIdGetDatum(result_array[i]));
+
+	return oid_list;
 }
 
 List *
@@ -950,6 +1113,178 @@ chunk_find_all_oids(Hyperspace *hs, List *dimension_vecs, LOCKMODE lockmode)
 	chunk_scan_ctx_destroy(&ctx);
 
 	return oid_list;
+}
+
+/* Implementation of show_chunks that also take the caller name
+ * as argument so error messages refer to the function
+ * that the user actually called. This is necessary because
+ * show_chunk_impl is used by drop_chunks and export_chunks
+ */
+Datum
+chunk_show_chunks(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	List	   *result_set = NIL;
+	char	   *caller_name;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+
+		/* create a function context for cross-call persistence */
+		Cache	   *hypertable_cache;
+		Hypertable *ht;
+		Dimension  *time_dim;
+
+		/*
+		 * contains the list of hypertables which need to be considred. this
+		 * is a list containing a single hypertable if PG_ARGISNULL(0) is
+		 * false. Otherwise, it will have the list of all hypertables in the
+		 * system
+		 */
+		List	   *hypertables = NIL;
+		List	   *chunks;
+		ListCell   *lc;
+		ListCell   *lcc;
+
+		Oid			time_dim_type = InvalidOid;
+		Oid			table_relid = PG_ARGISNULL(0) ? InvalidOid : PG_GETARG_OID(0);
+		int64		older_than = -1;
+		int64		newer_than = -1;
+
+		/*
+		 * get_fn_expr_argtype defaults to UNKNOWNOID if argument is NULL but
+		 * making it InvalidOid makes the logic simpler later
+		 */
+		Oid			older_than_type = PG_ARGISNULL(1) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 1);
+		Oid			newer_than_type = PG_ARGISNULL(2) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 2);
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		/* switch to memory context appropriate for multiple function calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		caller_name = PG_NARGS() <= 3 || PG_ARGISNULL(3) ? "show_chunks" : NameStr(*PG_GETARG_NAME(3));
+
+		if (PG_ARGISNULL(3))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("When calling the internal function for show_chunks "
+							"caller_name cannot be null")
+					 ));
+
+		StrategyNumber start_strategy = InvalidStrategy;
+		StrategyNumber end_strategy = InvalidStrategy;
+
+		if (older_than_type != InvalidOid &&
+			newer_than_type != InvalidOid &&
+			older_than_type != newer_than_type)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("older_than_type and newer_than_type should have the same type")
+					 ));
+
+		/*
+		 * Cache outside the if block to make sure cached hypertable entry
+		 * returned will still be valid in foreach block below
+		 */
+		hypertable_cache = hypertable_cache_pin();
+		if (PG_ARGISNULL(0))
+		{
+			hypertable_get_all(&hypertables, CurrentMemoryContext);
+		}
+		else
+		{
+			ht = hypertable_cache_get_entry(hypertable_cache, table_relid);
+			if (!ht)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("The given table does not exist or is not a hypertable")
+						 ));
+			hypertables = list_make1(ht);
+		}
+
+		foreach(lc, hypertables)
+		{
+			ht = lfirst(lc);
+
+			time_dim = hyperspace_get_open_dimension(ht->space, 0);
+			if (time_dim == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("no hypertables found")
+						 ));
+			if (time_dim_type == InvalidOid)
+				time_dim_type = time_dim->fd.column_type;
+
+			/*
+			 * Even though internally all time columns are represented as
+			 * bigints, it is locally unclear what set of chunks should be
+			 * returned if there are multiple tables on the system some of
+			 * which care about timestamp when others do not. That is why,
+			 * whenever there is any time dimension constraint given as an
+			 * argument (older_than or newer_than) we make sure all
+			 * hypertables have the time dimension type of the given type or
+			 * through an error.
+			 */
+			if (time_dim_type != time_dim->fd.column_type &&
+				(older_than_type != InvalidOid || newer_than_type != InvalidOid)
+				)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("cannot call %s on all hypertables "
+								"when all hypertables do not have the same time dimension type",
+								caller_name)
+						 ));
+
+			if (older_than_type != InvalidOid)
+			{
+				time_dim_typecheck(older_than_type, time_dim->fd.column_type, caller_name);
+				if (older_than_type == INTERVALOID)
+					older_than = interval_from_now_to_internal(PG_GETARG_DATUM(1), time_dim->fd.column_type);
+				else
+					older_than = time_value_to_internal(PG_GETARG_DATUM(1), older_than_type, false);
+				end_strategy = BTLessStrategyNumber;
+			}
+
+			if (newer_than_type != InvalidOid)
+			{
+				time_dim_typecheck(newer_than_type, time_dim->fd.column_type, caller_name);
+				if (newer_than_type == INTERVALOID)
+					newer_than = interval_from_now_to_internal(PG_GETARG_DATUM(2), time_dim->fd.column_type);
+				else
+					newer_than = time_value_to_internal(PG_GETARG_DATUM(2), newer_than_type, false);
+				start_strategy = BTGreaterEqualStrategyNumber;
+			}
+
+			if (older_than_type != InvalidOid && newer_than_type != InvalidOid && older_than < newer_than)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("When both older_than and newer_than are specified, "
+								"older_than must come after newer_than")
+						 ));
+
+			chunks = chunks_find_all_in_range_limit(
+													ht->space,
+													start_strategy,
+													newer_than,
+													end_strategy,
+													older_than,
+													-1);
+
+			foreach(lcc, chunks)
+			{
+				result_set = lappend_oid(result_set, ((Chunk *) lfirst(lcc))->table_id);
+			}
+		}
+		cache_release(hypertable_cache);
+
+		result_set = sort_oid_list(result_set);
+
+		funcctx->user_fctx = result_set;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	return srf_return_list(fcinfo);
 }
 
 Chunk *

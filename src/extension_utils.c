@@ -10,7 +10,6 @@
 #include <utils/lsyscache.h>
 #include <miscadmin.h>
 #include <parser/analyze.h>
-#include <commands/extension.h>
 #include <access/relscan.h>
 #include <catalog/pg_extension.h>
 #include <catalog/pg_authid.h>
