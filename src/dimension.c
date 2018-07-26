@@ -516,6 +516,13 @@ dimension_insert(int32 hypertable_id,
 int
 dimension_set_type(Dimension *dim, Oid newtype)
 {
+	if (!IS_VALID_OPEN_DIM_TYPE(newtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("time dimension column of a hypertable cannot be converted to "
+						"an unsupported type.")
+				 ));
+
 	dim->fd.column_type = newtype;
 
 	return dimension_scan_update(dim->fd.id, dimension_tuple_update, dim, RowExclusiveLock);
@@ -583,15 +590,6 @@ interval_to_usec(Interval *interval)
 		+ (interval->day * USECS_PER_DAY)
 		+ interval->time;
 }
-
-#define IS_INTEGER_TYPE(type)							\
-	(type == INT2OID || type == INT4OID || type == INT8OID)
-
-#define IS_TIMESTAMP_TYPE(type)									\
-	(type == TIMESTAMPOID || type == TIMESTAMPTZOID || type == DATEOID)
-
-#define IS_VALID_OPEN_DIM_TYPE(type)					\
-	(IS_INTEGER_TYPE(type) || IS_TIMESTAMP_TYPE(type))
 
 #define INT_TYPE_MAX(type)												\
 	(int64)((type == INT2OID) ? INT16_MAX : ((type == INT4OID) ? INT32_MAX : INT64_MAX))
