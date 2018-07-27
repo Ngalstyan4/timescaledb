@@ -3,23 +3,23 @@
 
 #include <fmgr.h>
 #include <utils/rel.h>
-#include <commands/dbcommands.h> //get_database_oid(dbname)
-#include <utils/varlena.h> // for SQL text types not needed after SQL exposure is removed
+#include <commands/dbcommands.h>
+#include <utils/varlena.h>
 #include <utils/lsyscache.h>
 #include <utils/builtins.h>
 #include <utils/syscache.h>
 #include <access/htup_details.h>
 #include <access/heapam.h>
 #include <utils/relcache.h>
-#include <catalog/objectaccess.h> // get_catalog_object_by_oid
+#include <catalog/objectaccess.h>
 #include <lib/stringinfo.h>
 #include <catalog/pg_type.h>
 #include <catalog/objectaddress.h>
 #include <catalog/pg_collation.h>
 #include <catalog/pg_constraint.h>
 #include <catalog/pg_constraint_fn.h>
-#include <access/sysattr.h> // FirstLowInvalidHeapAttributeNumber
-#include <access/genam.h> // pg_constraint scan stuff
+#include <access/sysattr.h>
+#include <access/genam.h>
 #include <utils/fmgroids.h>
 #include <catalog/indexing.h>
 #include <utils/ruleutils.h>
@@ -30,13 +30,13 @@ void		ct_deparse_columns(StringInfo qs, Relation table_rel);
 void		ct_deparse_constraints(StringInfo qs, Relation table_rel);
 char	   *deparse_create_table(Oid reloid);
 
-PG_FUNCTION_INFO_V1(deparse_test);
+PG_FUNCTION_INFO_V1(deparse_create_table_test);
 
 /* outward facing api for testing purposes only.
  * Depraser is generally going to be used internally.
  */
 Datum
-deparse_test(PG_FUNCTION_ARGS)
+deparse_create_table_test(PG_FUNCTION_ARGS)
 {
 	char	   *final_query = NULL;
 	Oid			relation_oid = PG_GETARG_OID(0);
