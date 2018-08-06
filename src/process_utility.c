@@ -1579,6 +1579,7 @@ process_altertable_end_subcmd(Hypertable *ht, Node *parsetree, ObjectAddress *ob
 		case AT_SetOptions:
 		case AT_ResetOptions:
 		case AT_DropCluster:
+		case AT_SetTableSpace:
 			foreach_chunk(ht, process_altertable_chunk, cmd);
 			break;
 		case AT_AddInherit:

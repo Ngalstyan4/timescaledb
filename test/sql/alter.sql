@@ -89,3 +89,52 @@ SELECT * FROM _timescaledb_catalog.chunk WHERE id = 2;
 \set ON_ERROR_STOP 0
 ALTER TABLE public.new_chunk_name RENAME COLUMN time TO newtime;
 \set ON_ERROR_STOP 1
+
+\! mkdir /tmp/new_space
+CREATE TABLESPACE new_space LOCATION '/tmp/new_space';
+CREATE TABLE hyper_in_space(time bigint, temp float, device int);
+SELECT create_hypertable('hyper_in_space', 'time', 'device', 4, chunk_time_interval=>1);
+
+INSERT INTO hyper_in_space(time, temp, device) VALUES (1, 20, 1);
+INSERT INTO hyper_in_space(time, temp, device) VALUES (3, 21, 2);
+INSERT INTO hyper_in_space(time, temp, device) VALUES (5, 23, 1);
+
+SELECT tablename FROM pg_tables WHERE tablespace = 'new_space';
+ALTER TABLE hyper_in_space SET TABLESPACE new_space;
+SELECT tablename FROM pg_tables WHERE tablespace = 'new_space';
+
+-- should be inserted in an existing chunk in the new tablespace,
+--  no new chunks
+INSERT INTO hyper_in_space(time, temp, device) VALUES (5, 27, 1);
+
+-- should be inserted in the default tablespace
+INSERT INTO hyper_in_space(time, temp, device) VALUES (8, 24, 2);
+SELECT tablename, tablespace FROM pg_tables WHERE tablename = 'hyper_in_space' OR tablename LIKE '\_hyper\__\__\_chunk';
+
+SET default_tablespace = new_space;
+
+-- should be inserted in the new_space tablespace which is now default
+INSERT INTO hyper_in_space(time, temp, device) VALUES (11, 24, 3);
+SELECT tablename, tablespace FROM pg_tables WHERE tablename = 'hyper_in_space' OR tablename LIKE '\_hyper\__\__\_chunk';
+
+-- the one chunk in pg_default should be moved over
+ALTER TABLE hyper_in_space SET TABLESPACE new_space;
+SELECT tablename, tablespace FROM pg_tables WHERE tablename = 'hyper_in_space' OR tablename LIKE '\_hyper\__\__\_chunk';
+
+\set ON_ERROR_STOP 0
+-- not an empty tablespace
+DROP TABLESPACE new_space;
+\set ON_ERROR_STOP 1
+
+SELECT drop_chunks(20, 'hyper_in_space');
+SELECT tablename, tablespace FROM pg_tables WHERE tablespace = 'new_space';
+
+\set ON_ERROR_STOP 0
+-- should not be able to drop tablespace if a hypertable depends on it
+-- even when there are no chunks
+DROP TABLESPACE new_space;
+\set ON_ERROR_STOP 1
+
+DROP TABLE hyper_in_space;
+DROP TABLESPACE new_space;
+\! rmdir /tmp/new_space
