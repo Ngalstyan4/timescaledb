@@ -650,8 +650,8 @@ WHERE h.schema_name = 'public' AND (h.table_name = 'drop_chunk_test1' OR h.table
 -- Note that currently this failure is triggered by SQL typecheker when it tries and fails to resolve
 -- ANYELEMENT args to a concrete type. Explicit error checking may be necessary if drop_chunks implementation
 -- is fully ported to C.
-SELECT drop_chunks();
-ERROR:  could not determine polymorphic type because input has type unknown
+-- commented out because there is discrepancy between postgres 9.6 and postgres 10 error messages for this case
+-- SELECT drop_chunks();
 -- should error because no hypertable
 SELECT drop_chunks(5, 'drop_chunk_test4');
 ERROR:  hypertable "drop_chunk_test4" does not exist

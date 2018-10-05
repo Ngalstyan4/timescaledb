@@ -82,21 +82,21 @@ BEGIN
         RAISE 'older_than and newer_than timestamps provided to drop_chunks cannot both be NULL';
     END IF;
     PERFORM _timescaledb_internal.drop_chunks_impl(older_than, table_name, schema_name, cascade,
-    truncate_before => FALSE, newer_than_time => newer_than);
+    newer_than_time => newer_than);
 END
 $BODY$;
 
 -- show chunks older than or newer than a specific time.
--- hypertable_name can be a valid hypertable or NULL.
+-- `hypertable` argument can be a valid hypertable or NULL.
 -- In the latter case the function will try to list all
 -- the chunks from all of the hypertables in the database.
 -- older_than or newer_than or both can be NULL.
--- if hypertable_name is null but a time constraint is specified
+-- if `hypertable` argument is null but a time constraint is specified
 -- through older_than or newer_than, the call will succeed
 -- if and only if all the hypertables in the database
 -- have the same type as the given time constraint argument
 CREATE OR REPLACE FUNCTION show_chunks(
-    hypertable_name  REGCLASS = NULL,
+    hypertable  REGCLASS = NULL,
     older_than "any" = NULL,
     newer_than "any" = NULL
 ) RETURNS SETOF REGCLASS AS '@MODULE_PATHNAME@', 'chunk_show_chunks'

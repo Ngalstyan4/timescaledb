@@ -8,7 +8,7 @@
 -- specifying the caller name. This makes it easier to taylor
 -- error messages to the caller function context.
 CREATE OR REPLACE FUNCTION _timescaledb_internal.show_chunks_impl(
-    hypertable_name  REGCLASS = NULL,
+    hypertable  REGCLASS = NULL,
     older_than "any" = NULL,
     newer_than "any" = NULL,
     caller_name NAME = NULL
@@ -23,7 +23,6 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.drop_chunks_impl(
     table_name  NAME = NULL,
     schema_name NAME = NULL,
     cascade  BOOLEAN = FALSE,
-    truncate_before  BOOLEAN = FALSE,
     newer_than_time ANYELEMENT = NULL
 )
     RETURNS VOID LANGUAGE PLPGSQL VOLATILE AS
@@ -60,13 +59,6 @@ BEGIN
     LOOP
         FOR chunk_row IN SELECT _timescaledb_internal.show_chunks_impl(schema_name || '.' || table_name, older_than_time, newer_than_time, 'drop_chunks')
         LOOP
-            IF truncate_before THEN
-                EXECUTE format(
-                    $$
-                    TRUNCATE %s %s
-                    $$, chunk_row, cascade_mod
-                );
-            END IF;
             EXECUTE format(
                     $$
                     DROP TABLE %s %s
