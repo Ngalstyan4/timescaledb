@@ -19,17 +19,18 @@
 typedef struct SubspaceStoreInternalNode
 {
 	DimensionVec *vector;
-	size_t		descendants;
-	bool		last_internal_node;
+	size_t	descendants;
+	bool	  last_internal_node;
 } SubspaceStoreInternalNode;
 
 typedef struct SubspaceStore
 {
 	MemoryContext mcxt;
-	int16		num_dimensions;
-/* limit growth of store by  limiting number of slices in first dimension,	0 for no limit */
-	int16		max_items;
-	SubspaceStoreInternalNode *origin;	/* origin of the tree */
+	int16	 num_dimensions;
+	/* limit growth of store by  limiting number of slices in first dimension,	0
+	 * for no limit */
+	int16			   max_items;
+	SubspaceStoreInternalNode *origin; /* origin of the tree */
 } SubspaceStore;
 
 static inline SubspaceStoreInternalNode *
@@ -67,14 +68,15 @@ subspace_store_internal_node_descendants(SubspaceStoreInternalNode *node, int in
 SubspaceStore *
 subspace_store_init(Hyperspace *space, MemoryContext mcxt, int16 max_items)
 {
-	MemoryContext old = MemoryContextSwitchTo(mcxt);
+	MemoryContext  old = MemoryContextSwitchTo(mcxt);
 	SubspaceStore *sst = palloc(sizeof(SubspaceStore));
 
 	/*
 	 * make sure that the first dimension is a time dimension, otherwise the
 	 * tree will grow in a way that makes prunning less effective.
 	 */
-	Assert(space->num_dimensions < 1 || space->dimensions[0].type == DIMENSION_TYPE_OPEN);
+	Assert(space->num_dimensions < 1 ||
+	       space->dimensions[0].type == DIMENSION_TYPE_OPEN);
 
 	sst->origin = subspace_store_internal_node_create(space->num_dimensions == 1);
 	sst->num_dimensions = space->num_dimensions;
@@ -86,20 +88,20 @@ subspace_store_init(Hyperspace *space, MemoryContext mcxt, int16 max_items)
 }
 
 void
-subspace_store_add(SubspaceStore *store, const Hypercube *hc,
-				   void *object, void (*object_free) (void *))
+subspace_store_add(SubspaceStore *store, const Hypercube *hc, void *object,
+		   void (*object_free)(void *))
 {
 	SubspaceStoreInternalNode *node = store->origin;
-	DimensionSlice *last = NULL;
-	MemoryContext old = MemoryContextSwitchTo(store->mcxt);
-	int			i;
+	DimensionSlice *	   last = NULL;
+	MemoryContext		   old = MemoryContextSwitchTo(store->mcxt);
+	int			   i;
 
 	Assert(hc->num_slices == store->num_dimensions);
 
 	for (i = 0; i < hc->num_slices; i++)
 	{
 		const DimensionSlice *target = hc->slices[i];
-		DimensionSlice *match;
+		DimensionSlice *      match;
 
 		Assert(target->storage == NULL);
 
@@ -111,12 +113,14 @@ subspace_store_add(SubspaceStore *store, const Hypercube *hc,
 			 * create one now. (There will always be one for time)
 			 */
 			Assert(last != NULL);
-			last->storage = subspace_store_internal_node_create(i == (hc->num_slices - 1));
+			last->storage = subspace_store_internal_node_create(
+			    i == (hc->num_slices - 1));
 			last->storage_free = subspace_store_internal_node_free;
 			node = last->storage;
 		}
 
-		Assert(store->max_items == 0 || node->descendants <= (size_t) store->max_items);
+		Assert(store->max_items == 0 ||
+		       node->descendants <= (size_t) store->max_items);
 
 		/*
 		 * We only call this function on a cache miss, so number of leaves
@@ -126,7 +130,8 @@ subspace_store_add(SubspaceStore *store, const Hypercube *hc,
 		node->descendants += 1;
 
 		Assert(0 == node->vector->num_slices ||
-			   node->vector->slices[0]->fd.dimension_id == target->fd.dimension_id);
+		       node->vector->slices[0]->fd.dimension_id ==
+			   target->fd.dimension_id);
 
 		/* Do we have enough space to store the object? */
 		if (store->max_items > 0 && node->descendants > store->max_items)
@@ -140,7 +145,8 @@ subspace_store_add(SubspaceStore *store, const Hypercube *hc,
 			 * become significant we may wish to change this to something more
 			 * sophisticated like LRU.
 			 */
-			size_t		items_removed = subspace_store_internal_node_descendants(node, i);
+			size_t items_removed =
+			    subspace_store_internal_node_descendants(node, i);
 
 			/*
 			 * descendants at the root is inclusive of the descendants at the
@@ -176,7 +182,8 @@ subspace_store_add(SubspaceStore *store, const Hypercube *hc,
 			match = copy;
 		}
 
-		Assert(store->max_items == 0 || node->descendants <= (size_t) store->max_items);
+		Assert(store->max_items == 0 ||
+		       node->descendants <= (size_t) store->max_items);
 
 		last = match;
 		/* internal slices point to the next SubspaceStoreInternalNode */
@@ -184,17 +191,16 @@ subspace_store_add(SubspaceStore *store, const Hypercube *hc,
 	}
 
 	Assert(last != NULL && last->storage == NULL);
-	last->storage = object;		/* at the end we store the object */
+	last->storage = object; /* at the end we store the object */
 	last->storage_free = object_free;
 	MemoryContextSwitchTo(old);
 }
 
-
 void *
 subspace_store_get(SubspaceStore *store, Point *target)
 {
-	int			i;
-	DimensionVec *vec = store->origin->vector;
+	int		i;
+	DimensionVec *  vec = store->origin->vector;
 	DimensionSlice *match = NULL;
 
 	Assert(target->cardinality == store->num_dimensions);

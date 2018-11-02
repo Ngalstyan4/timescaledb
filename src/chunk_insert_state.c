@@ -30,10 +30,9 @@ static inline Index
 create_chunk_range_table_entry(ChunkDispatch *dispatch, Relation rel)
 {
 	RangeTblEntry *rte;
-	ListCell   *lc;
-	Index		rti = 1;
-	EState	   *estate = dispatch->estate;
-
+	ListCell *     lc;
+	Index	  rti = 1;
+	EState *       estate = dispatch->estate;
 
 	/*
 	 * Check if we previously created an entry for this relation. This can
@@ -42,7 +41,7 @@ create_chunk_range_table_entry(ChunkDispatch *dispatch, Relation rel)
 	 * larger than the number of chunks in a table, although it imposes a
 	 * penalty for looking up old entries.
 	 */
-	foreach(lc, estate->es_range_table)
+	foreach (lc, estate->es_range_table)
 	{
 		rte = lfirst(lc);
 
@@ -50,7 +49,6 @@ create_chunk_range_table_entry(ChunkDispatch *dispatch, Relation rel)
 			return rti;
 		rti++;
 	}
-
 
 	rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_RELATION;
@@ -66,7 +64,9 @@ create_chunk_range_table_entry(ChunkDispatch *dispatch, Relation rel)
 	{
 		RangeTblEntry *hypertable_rte;
 
-		hypertable_rte = rt_fetch(dispatch->hypertable_result_rel_info->ri_RangeTableIndex, estate->es_range_table);
+		hypertable_rte =
+		    rt_fetch(dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
+			     estate->es_range_table);
 		rte->eref = hypertable_rte->eref;
 	}
 
@@ -82,7 +82,6 @@ create_chunk_range_table_entry(ChunkDispatch *dispatch, Relation rel)
 	return list_length(estate->es_range_table);
 }
 
-
 /*
  * Convert a tuple to match the chunk's rowtype. This might be necessary if the
  * main table has been modified, e.g., a column was dropped. The dropped column
@@ -91,11 +90,10 @@ create_chunk_range_table_entry(ChunkDispatch *dispatch, Relation rel)
  * chunks can have different attnums for columns.
  */
 HeapTuple
-chunk_insert_state_convert_tuple(ChunkInsertState *state,
-								 HeapTuple tuple,
-								 TupleTableSlot **existing_slot)
+chunk_insert_state_convert_tuple(ChunkInsertState *state, HeapTuple tuple,
+				 TupleTableSlot **existing_slot)
 {
-	Relation	chunkrel = state->result_relation_info->ri_RelationDesc;
+	Relation chunkrel = state->result_relation_info->ri_RelationDesc;
 
 	if (NULL == state->tup_conv_map)
 		/* No conversion needed */
@@ -116,7 +114,7 @@ chunk_insert_state_convert_tuple(ChunkInsertState *state,
 static inline ExprState *
 prepare_constr_expr(Expr *node)
 {
-	ExprState  *result;
+	ExprState *result;
 
 	node = expression_planner(node);
 	result = ExecInitExpr(node, NULL);
@@ -135,38 +133,32 @@ prepare_constr_expr(Expr *node)
 static inline void
 create_chunk_rri_constraint_expr(ResultRelInfo *rri, Relation rel)
 {
-	int			ncheck,
-				i;
+	int	  ncheck, i;
 	ConstrCheck *check;
 
-	Assert(rel->rd_att->constr != NULL &&
-		   rri->ri_ConstraintExprs == NULL);
+	Assert(rel->rd_att->constr != NULL && rri->ri_ConstraintExprs == NULL);
 
 	ncheck = rel->rd_att->constr->num_check;
 	check = rel->rd_att->constr->check;
 
 #if PG10
-	rri->ri_ConstraintExprs =
-		(ExprState **) palloc(ncheck * sizeof(ExprState *));
+	rri->ri_ConstraintExprs = (ExprState **) palloc(ncheck * sizeof(ExprState *));
 
 	for (i = 0; i < ncheck; i++)
 	{
-		Expr	   *checkconstr = stringToNode(check[i].ccbin);
+		Expr *checkconstr = stringToNode(check[i].ccbin);
 
-		rri->ri_ConstraintExprs[i] =
-			prepare_constr_expr(checkconstr);
+		rri->ri_ConstraintExprs[i] = prepare_constr_expr(checkconstr);
 	}
 #elif PG96
-	rri->ri_ConstraintExprs =
-		(List **) palloc(ncheck * sizeof(List *));
+	rri->ri_ConstraintExprs = (List **) palloc(ncheck * sizeof(List *));
 
 	for (i = 0; i < ncheck; i++)
 	{
 		/* ExecQual wants implicit-AND form */
-		List	   *qual = make_ands_implicit(stringToNode(check[i].ccbin));
+		List *qual = make_ands_implicit(stringToNode(check[i].ccbin));
 
-		rri->ri_ConstraintExprs[i] = (List *)
-			prepare_constr_expr((Expr *) qual);
+		rri->ri_ConstraintExprs[i] = (List *) prepare_constr_expr((Expr *) qual);
 	}
 #endif
 }
@@ -183,17 +175,12 @@ create_chunk_rri_constraint_expr(ResultRelInfo *rri, Relation rel)
 static inline ResultRelInfo *
 create_chunk_result_relation_info(ChunkDispatch *dispatch, Relation rel, Index rti)
 {
-	ResultRelInfo *rri,
-			   *rri_orig;
-
+	ResultRelInfo *rri, *rri_orig;
 
 	rri = palloc0(sizeof(ResultRelInfo));
 	NodeSetTag(rri, T_ResultRelInfo);
 
-	InitResultRelInfoCompat(rri,
-							rel,
-							rti,
-							dispatch->estate->es_instrument);
+	InitResultRelInfoCompat(rri, rel, rti, dispatch->estate->es_instrument);
 
 	/* Copy options from the main table's (hypertable's) result relation info */
 	rri_orig = dispatch->hypertable_result_rel_info;
@@ -210,35 +197,45 @@ create_chunk_result_relation_info(ChunkDispatch *dispatch, Relation rel, Index r
 }
 
 static ProjectionInfo *
-get_adjusted_projection_info_returning(ProjectionInfo *orig, List *returning_clauses, AttrNumber *map,
-									   int map_size, Index varno, Oid rowtype,
-									   TupleDesc chunk_desc)
+get_adjusted_projection_info_returning(ProjectionInfo *orig, List *returning_clauses,
+				       AttrNumber *map, int map_size, Index varno,
+				       Oid rowtype, TupleDesc chunk_desc)
 {
-	bool		found_whole_row;
+	bool found_whole_row;
 
 	Assert(returning_clauses != NIL);
 
 	/* map hypertable attnos -> chunk attnos */
-	returning_clauses = (List *) map_variable_attnos_compat((Node *) returning_clauses, varno, 0, map, map_size,
-															rowtype, &found_whole_row);
+	returning_clauses =
+	    (List *) map_variable_attnos_compat((Node *) returning_clauses,
+						varno,
+						0,
+						map,
+						map_size,
+						rowtype,
+						&found_whole_row);
 
-	return ExecBuildProjectionInfoCompat(returning_clauses, orig->pi_exprContext,
-										 get_projection_info_slot_compat(orig), NULL, chunk_desc);
+	return ExecBuildProjectionInfoCompat(returning_clauses,
+					     orig->pi_exprContext,
+					     get_projection_info_slot_compat(orig),
+					     NULL,
+					     chunk_desc);
 }
 
 static ExprState *
-get_adjusted_onconflictupdate_where(ExprState *hyper_where_state, List *where_quals, AttrNumber *map,
-									int map_size, Index varno, Oid rowtype)
+get_adjusted_onconflictupdate_where(ExprState *hyper_where_state, List *where_quals,
+				    AttrNumber *map, int map_size, Index varno,
+				    Oid rowtype)
 {
-	bool		found_whole_row;
+	bool found_whole_row;
 
 	Assert(where_quals != NIL);
 	/* map hypertable attnos -> chunk attnos for the hypertable */
-	where_quals = (List *) map_variable_attnos_compat((Node *) where_quals, varno, 0, map, map_size,
-													  rowtype, &found_whole_row);
+	where_quals = (List *) map_variable_attnos_compat(
+	    (Node *) where_quals, varno, 0, map, map_size, rowtype, &found_whole_row);
 	/* map hypertable attnos -> chunk attnos for the "excluded" table */
-	where_quals = (List *) map_variable_attnos_compat((Node *) where_quals, INNER_VAR, 0, map, map_size,
-													  rowtype, &found_whole_row);
+	where_quals = (List *) map_variable_attnos_compat(
+	    (Node *) where_quals, INNER_VAR, 0, map, map_size, rowtype, &found_whole_row);
 #if PG96
 	return ExecInitExpr((Expr *) where_quals, NULL);
 #else
@@ -247,24 +244,21 @@ get_adjusted_onconflictupdate_where(ExprState *hyper_where_state, List *where_qu
 }
 
 static ProjectionInfo *
-get_adjusted_projection_info_onconflicupdate(ProjectionInfo *orig, List *update_tles, AttrNumber *map,
-											 int map_size, Index varno, Oid rowtype,
-											 TupleDesc chunk_desc)
+get_adjusted_projection_info_onconflicupdate(ProjectionInfo *orig, List *update_tles,
+					     AttrNumber *map, int map_size, Index varno,
+					     Oid rowtype, TupleDesc chunk_desc)
 {
-	bool		found_whole_row;
-	int			i;
-	ListCell   *lc,
-			   *prev,
-			   *next;
+	bool      found_whole_row;
+	int       i;
+	ListCell *lc, *prev, *next;
 
 	Assert(update_tles != NIL);
 	/* map hypertable attnos -> chunk attnos for the hypertable */
-	update_tles = (List *) map_variable_attnos_compat((Node *) update_tles, varno, 0, map, map_size,
-													  rowtype, &found_whole_row);
+	update_tles = (List *) map_variable_attnos_compat(
+	    (Node *) update_tles, varno, 0, map, map_size, rowtype, &found_whole_row);
 	/* map hypertable attnos -> chunk attnos for the "excluded" table */
-	update_tles = (List *) map_variable_attnos_compat((Node *) update_tles, INNER_VAR, 0, map, map_size,
-													  rowtype, &found_whole_row);
-
+	update_tles = (List *) map_variable_attnos_compat(
+	    (Node *) update_tles, INNER_VAR, 0, map, map_size, rowtype, &found_whole_row);
 
 	Assert(list_length(update_tles) == map_size);
 
@@ -277,7 +271,7 @@ get_adjusted_projection_info_onconflicupdate(ProjectionInfo *orig, List *update_
 	prev = NULL;
 	for (i = 0; i < map_size; i++)
 	{
-		AttrNumber	att = map[i];
+		AttrNumber att = map[i];
 
 		next = lnext(lc);
 
@@ -293,16 +287,17 @@ get_adjusted_projection_info_onconflicupdate(ProjectionInfo *orig, List *update_
 	 * and also fix up the TLE resno after the deletes above
 	 */
 	i = 0;
-	foreach(lc, update_tles)
+	foreach (lc, update_tles)
 	{
-		TargetEntry *t = lfirst(lc);
+		TargetEntry *     t = lfirst(lc);
 		Form_pg_attribute attribute;
 
 		Assert(i < chunk_desc->natts);
 		attribute = chunk_desc->attrs[i];
 
 		if (namestrcmp(&attribute->attname, t->resname) != 0)
-			elog(ERROR, "invalid translation of ON CONFLICT update statements");
+			elog(ERROR,
+			     "invalid translation of ON CONFLICT update statements");
 
 		t->resno = i + 1;
 		i++;
@@ -310,8 +305,11 @@ get_adjusted_projection_info_onconflicupdate(ProjectionInfo *orig, List *update_
 
 	/* set the projection result slot to the chunk schema */
 	ExecSetSlotDescriptor(get_projection_info_slot_compat(orig), chunk_desc);
-	return ExecBuildProjectionInfoCompat(update_tles, orig->pi_exprContext,
-										 get_projection_info_slot_compat(orig), NULL, chunk_desc);
+	return ExecBuildProjectionInfoCompat(update_tles,
+					     orig->pi_exprContext,
+					     get_projection_info_slot_compat(orig),
+					     NULL,
+					     chunk_desc);
 }
 
 /* Change the projections to work with chunks instead of hypertables */
@@ -319,10 +317,10 @@ static void
 adjust_projections(ChunkInsertState *cis, ChunkDispatch *dispatch, Oid rowtype)
 {
 	ResultRelInfo *rri = cis->result_relation_info;
-	AttrNumber *variable_attnos_map;
-	int			variable_attnos_map_size;
-	TupleDesc	chunk_desc = cis->tup_conv_map->outdesc;
-	TupleDesc	hypertable_desc = cis->tup_conv_map->indesc;
+	AttrNumber *   variable_attnos_map;
+	int	    variable_attnos_map_size;
+	TupleDesc      chunk_desc = cis->tup_conv_map->outdesc;
+	TupleDesc      hypertable_desc = cis->tup_conv_map->indesc;
 
 	Assert(cis->tup_conv_map != NULL);
 
@@ -331,33 +329,32 @@ adjust_projections(ChunkInsertState *cis, ChunkDispatch *dispatch, Oid rowtype)
 	 * the hypertable_desc in the out spot for map_variable_attnos to work
 	 * correctly in mapping hypertable attnos->chunk attnos
 	 */
-	variable_attnos_map = convert_tuples_by_name_map(chunk_desc,
-													 hypertable_desc,
-													 gettext_noop("could not convert row type"));
+	variable_attnos_map = convert_tuples_by_name_map(
+	    chunk_desc, hypertable_desc, gettext_noop("could not convert row type"));
 	variable_attnos_map_size = hypertable_desc->natts;
 
 	if (rri->ri_projectReturning != NULL)
 	{
-		rri->ri_projectReturning =
-			get_adjusted_projection_info_returning(rri->ri_projectReturning,
-												   list_nth(dispatch->returning_lists, dispatch->returning_index),
-												   variable_attnos_map,
-												   variable_attnos_map_size,
-												   dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
-												   rowtype,
-												   chunk_desc);
+		rri->ri_projectReturning = get_adjusted_projection_info_returning(
+		    rri->ri_projectReturning,
+		    list_nth(dispatch->returning_lists, dispatch->returning_index),
+		    variable_attnos_map,
+		    variable_attnos_map_size,
+		    dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
+		    rowtype,
+		    chunk_desc);
 	}
 
 	if (rri->ri_onConflictSetProj != NULL)
 	{
-		rri->ri_onConflictSetProj =
-			get_adjusted_projection_info_onconflicupdate(rri->ri_onConflictSetProj,
-														 dispatch->on_conflict_set,
-														 variable_attnos_map,
-														 variable_attnos_map_size,
-														 dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
-														 rowtype,
-														 chunk_desc);
+		rri->ri_onConflictSetProj = get_adjusted_projection_info_onconflicupdate(
+		    rri->ri_onConflictSetProj,
+		    dispatch->on_conflict_set,
+		    variable_attnos_map,
+		    variable_attnos_map_size,
+		    dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
+		    rowtype,
+		    chunk_desc);
 
 		if (rri->ri_onConflictSetWhere != NULL)
 		{
@@ -366,12 +363,13 @@ adjust_projections(ChunkInsertState *cis, ChunkDispatch *dispatch, Oid rowtype)
 #else
 			rri->ri_onConflictSetWhere =
 #endif
-				get_adjusted_onconflictupdate_where((ExprState *) rri->ri_onConflictSetWhere,
-													dispatch->on_conflict_where,
-													variable_attnos_map,
-													variable_attnos_map_size,
-													dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
-													rowtype);
+			    get_adjusted_onconflictupdate_where(
+				(ExprState *) rri->ri_onConflictSetWhere,
+				dispatch->on_conflict_where,
+				variable_attnos_map,
+				variable_attnos_map_size,
+				dispatch->hypertable_result_rel_info->ri_RangeTableIndex,
+				rowtype);
 		}
 	}
 }
@@ -385,27 +383,28 @@ adjust_projections(ChunkInsertState *cis, ChunkDispatch *dispatch, Oid rowtype)
  * attributes that aren't inherited by new children tables.
  */
 static inline bool
-tuple_conversion_needed(TupleDesc indesc,
-						TupleDesc outdesc)
+tuple_conversion_needed(TupleDesc indesc, TupleDesc outdesc)
 {
-	return (indesc->natts != outdesc->natts ||
-			indesc->tdhasoid != outdesc->tdhasoid);
+	return (indesc->natts != outdesc->natts || indesc->tdhasoid != outdesc->tdhasoid);
 }
 
 /* Translate hypertable indexes to chunk indexes in the arbiter clause */
 static void
-chunk_insert_state_set_arbiter_indexes(ChunkInsertState *state, ChunkDispatch *dispatch, Relation chunk_rel)
+chunk_insert_state_set_arbiter_indexes(ChunkInsertState *state, ChunkDispatch *dispatch,
+				       Relation chunk_rel)
 {
-	ListCell   *lc;
+	ListCell *lc;
 
 	state->arbiter_indexes = NIL;
-	foreach(lc, dispatch->arbiter_indexes)
+	foreach (lc, dispatch->arbiter_indexes)
 	{
-		Oid			hypertable_index = lfirst_oid(lc);
-		Chunk	   *chunk = chunk_get_by_relid(RelationGetRelid(chunk_rel), 0, true);
-		ChunkIndexMapping *cim = chunk_index_get_by_hypertable_indexrelid(chunk, hypertable_index);
+		Oid    hypertable_index = lfirst_oid(lc);
+		Chunk *chunk = chunk_get_by_relid(RelationGetRelid(chunk_rel), 0, true);
+		ChunkIndexMapping *cim =
+		    chunk_index_get_by_hypertable_indexrelid(chunk, hypertable_index);
 
-		state->arbiter_indexes = lappend_oid(state->arbiter_indexes, cim->indexoid);
+		state->arbiter_indexes =
+		    lappend_oid(state->arbiter_indexes, cim->indexoid);
 	}
 }
 
@@ -419,20 +418,20 @@ extern ChunkInsertState *
 chunk_insert_state_create(Chunk *chunk, ChunkDispatch *dispatch)
 {
 	ChunkInsertState *state;
-	Relation	rel,
-				parent_rel;
-	Index		rti;
-	MemoryContext old_mcxt;
-	MemoryContext cis_context = AllocSetContextCreate(dispatch->estate->es_query_cxt,
-													  "chunk insert state memory context",
-													  ALLOCSET_DEFAULT_SIZES);
+	Relation	  rel, parent_rel;
+	Index		  rti;
+	MemoryContext     old_mcxt;
+	MemoryContext     cis_context =
+	    AllocSetContextCreate(dispatch->estate->es_query_cxt,
+				  "chunk insert state memory context",
+				  ALLOCSET_DEFAULT_SIZES);
 	ResultRelInfo *resrelinfo;
 
 	/* permissions NOT checked here; were checked at hypertable level */
 	if (check_enable_rls(chunk->table_id, InvalidOid, false) == RLS_ENABLED)
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("hypertables do not support row-level security")));
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("hypertables do not support row-level security")));
 
 	/*
 	 * We must allocate the range table entry on the executor's per-query
@@ -458,14 +457,14 @@ chunk_insert_state_create(Chunk *chunk, ChunkDispatch *dispatch)
 	state->estate = dispatch->estate;
 
 	if (resrelinfo->ri_RelationDesc->rd_rel->relhasindex &&
-		resrelinfo->ri_IndexRelationDescs == NULL)
+	    resrelinfo->ri_IndexRelationDescs == NULL)
 		ExecOpenIndices(resrelinfo, dispatch->on_conflict != ONCONFLICT_NONE);
 
 	if (resrelinfo->ri_TrigDesc != NULL)
 	{
 		if (resrelinfo->ri_TrigDesc->trig_insert_instead_row ||
-			resrelinfo->ri_TrigDesc->trig_insert_after_statement ||
-			resrelinfo->ri_TrigDesc->trig_insert_before_statement)
+		    resrelinfo->ri_TrigDesc->trig_insert_after_statement ||
+		    resrelinfo->ri_TrigDesc->trig_insert_before_statement)
 			elog(ERROR, "insert trigger on chunk table not supported");
 	}
 
@@ -478,9 +477,10 @@ chunk_insert_state_create(Chunk *chunk, ChunkDispatch *dispatch)
 
 	if (tuple_conversion_needed(RelationGetDescr(parent_rel), RelationGetDescr(rel)))
 	{
-		state->tup_conv_map = convert_tuples_by_name(RelationGetDescr(parent_rel),
-													 RelationGetDescr(rel),
-													 gettext_noop("could not convert row type"));
+		state->tup_conv_map =
+		    convert_tuples_by_name(RelationGetDescr(parent_rel),
+					   RelationGetDescr(rel),
+					   gettext_noop("could not convert row type"));
 		adjust_projections(state, dispatch, RelationGetForm(rel)->reltype);
 	}
 

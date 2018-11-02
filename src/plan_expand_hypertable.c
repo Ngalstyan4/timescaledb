@@ -14,15 +14,12 @@
 #include "planner_import.h"
 #include "compat.h"
 
-
-
 typedef struct CollectQualCtx
 {
 	PlannerInfo *root;
-	RelOptInfo *rel;
-	List	   *result;
+	RelOptInfo * rel;
+	List *       result;
 } CollectQualCtx;
-
 
 static bool
 collect_quals_walker(Node *node, CollectQualCtx *ctx)
@@ -32,35 +29,31 @@ collect_quals_walker(Node *node, CollectQualCtx *ctx)
 
 	if (IsA(node, FromExpr))
 	{
-		FromExpr   *f = (FromExpr *) node;
-		ListCell   *lc;
+		FromExpr *f = (FromExpr *) node;
+		ListCell *lc;
 
-		foreach(lc, (List *) f->quals)
+		foreach (lc, (List *) f->quals)
 		{
-			Node	   *qual = (Node *) lfirst(lc);
+			Node *	qual = (Node *) lfirst(lc);
 			RestrictInfo *restrictinfo;
 
-			Relids		relids = pull_varnos(qual);
+			Relids relids = pull_varnos(qual);
 
-			if (bms_num_members(relids) != 1 || !bms_is_member(ctx->rel->relid, relids))
+			if (bms_num_members(relids) != 1 ||
+			    !bms_is_member(ctx->rel->relid, relids))
 				continue;
 #if PG96
-			restrictinfo = make_restrictinfo((Expr *) qual,
-											 true,
-											 false,
-											 false,
-											 relids,
-											 NULL,
-											 NULL);
+			restrictinfo = make_restrictinfo(
+			    (Expr *) qual, true, false, false, relids, NULL, NULL);
 #else
 			restrictinfo = make_restrictinfo((Expr *) qual,
-											 true,
-											 false,
-											 false,
-											 ctx->root->qual_security_level,
-											 relids,
-											 NULL,
-											 NULL);
+							 true,
+							 false,
+							 false,
+							 ctx->root->qual_security_level,
+							 relids,
+							 NULL,
+							 NULL);
 #endif
 			ctx->result = lappend(ctx->result, restrictinfo);
 		}
@@ -92,36 +85,36 @@ get_restrict_info(PlannerInfo *root, RelOptInfo *rel)
 static List *
 find_children_oids(HypertableRestrictInfo *hri, Hypertable *ht, LOCKMODE lockmode)
 {
-	List	   *result;
+	List *result;
 
 	/*
 	 * Using the HRI only makes sense if we are not using all the chunks,
 	 * otherwise using the cached inheritance hierarchy is faster.
 	 */
 	if (!hypertable_restrict_info_has_restrictions(hri))
-		return find_all_inheritors(ht->main_table_relid, lockmode, NULL);;
+		return find_all_inheritors(ht->main_table_relid, lockmode, NULL);
+	;
 
 	/* always include parent again, just as find_all_inheritors does */
 	result = list_make1_oid(ht->main_table_relid);
 
 	/* add chunks */
 	result = list_concat(result,
-						 hypertable_restrict_info_get_chunk_oids(hri,
-																 ht,
-																 lockmode));
+			     hypertable_restrict_info_get_chunk_oids(hri, ht, lockmode));
 	return result;
 }
 
 bool
-plan_expand_hypertable_valid_hypertable(Hypertable *ht, Query *parse, Index rti, RangeTblEntry *rte)
+plan_expand_hypertable_valid_hypertable(Hypertable *ht, Query *parse, Index rti,
+					RangeTblEntry *rte)
 {
 	if (ht == NULL ||
-	/* inheritance enabled */
-		rte->inh == false ||
-	/* row locks not necessary */
-		parse->rowMarks != NIL ||
-	/* not update and/or delete */
-		0 != parse->resultRelation)
+	    /* inheritance enabled */
+	    rte->inh == false ||
+	    /* row locks not necessary */
+	    parse->rowMarks != NIL ||
+	    /* not update and/or delete */
+	    0 != parse->resultRelation)
 		return false;
 
 	return true;
@@ -130,29 +123,25 @@ plan_expand_hypertable_valid_hypertable(Hypertable *ht, Query *parse, Index rti,
 /* Inspired by expand_inherited_rtentry but expands
  * a hypertable chunks into an append relationship */
 void
-plan_expand_hypertable_chunks(Hypertable *ht,
-							  PlannerInfo *root,
-							  Oid parent_oid,
-							  bool inhparent,
-							  RelOptInfo *rel)
+plan_expand_hypertable_chunks(Hypertable *ht, PlannerInfo *root, Oid parent_oid,
+			      bool inhparent, RelOptInfo *rel)
 {
-	RangeTblEntry *rte = rt_fetch(rel->relid, root->parse->rtable);
-	List	   *inh_oids;
-	ListCell   *l;
-	Relation	oldrelation = heap_open(parent_oid, NoLock);
-	Query	   *parse = root->parse;
-	Index		rti = rel->relid;
-	List	   *appinfos = NIL;
+	RangeTblEntry *		rte = rt_fetch(rel->relid, root->parse->rtable);
+	List *			inh_oids;
+	ListCell *		l;
+	Relation		oldrelation = heap_open(parent_oid, NoLock);
+	Query *			parse = root->parse;
+	Index			rti = rel->relid;
+	List *			appinfos = NIL;
 	HypertableRestrictInfo *hri;
-	PlanRowMark *oldrc;
-	List	   *restrictinfo;
+	PlanRowMark *		oldrc;
+	List *			restrictinfo;
 
 	/* double check our permissions are valid */
 	Assert(rti != parse->resultRelation);
 	oldrc = get_plan_rowmark(root->rowMarks, rti);
 	if (oldrc && RowMarkRequiresRowShareLock(oldrc->markType))
 		elog(ERROR, "unexpected permissions requested");
-
 
 	/* mark the parent as an append relation */
 	rte->inh = true;
@@ -177,16 +166,18 @@ plan_expand_hypertable_chunks(Hypertable *ht,
 	 * children to them
 	 */
 	root->simple_rel_array_size += list_length(inh_oids);
-	root->simple_rel_array = repalloc(root->simple_rel_array, root->simple_rel_array_size * sizeof(RelOptInfo *));
-	root->simple_rte_array = repalloc(root->simple_rte_array, root->simple_rel_array_size * sizeof(RangeTblEntry *));
+	root->simple_rel_array = repalloc(
+	    root->simple_rel_array, root->simple_rel_array_size * sizeof(RelOptInfo *));
+	root->simple_rte_array =
+	    repalloc(root->simple_rte_array,
+		     root->simple_rel_array_size * sizeof(RangeTblEntry *));
 
-
-	foreach(l, inh_oids)
+	foreach (l, inh_oids)
 	{
-		Oid			child_oid = lfirst_oid(l);
-		Relation	newrelation;
+		Oid	    child_oid = lfirst_oid(l);
+		Relation       newrelation;
 		RangeTblEntry *childrte;
-		Index		child_rtindex;
+		Index	  child_rtindex;
 		AppendRelInfo *appinfo;
 
 		/* Open rel if needed; we already have required locks */
@@ -232,11 +223,10 @@ plan_expand_hypertable_chunks(Hypertable *ht,
 		appinfo->child_relid = child_rtindex;
 		appinfo->parent_reltype = oldrelation->rd_rel->reltype;
 		appinfo->child_reltype = newrelation->rd_rel->reltype;
-		make_inh_translation_list(oldrelation, newrelation, child_rtindex,
-								  &appinfo->translated_vars);
+		make_inh_translation_list(
+		    oldrelation, newrelation, child_rtindex, &appinfo->translated_vars);
 		appinfo->parent_reloid = parent_oid;
 		appinfos = lappend(appinfos, appinfo);
-
 
 		/* Close child relations, but keep locks */
 		if (child_oid != parent_oid)

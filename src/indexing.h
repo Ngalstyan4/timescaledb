@@ -12,4 +12,4 @@ extern void indexing_verify_index(Hyperspace *hs, IndexStmt *stmt);
 extern void indexing_verify_indexes(Hypertable *ht);
 extern void indexing_create_default_indexes(Hypertable *ht);
 
-#endif							/* TIMESCALEDB_INDEXING_H */
+#endif /* TIMESCALEDB_INDEXING_H */

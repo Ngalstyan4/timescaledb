@@ -23,19 +23,18 @@
  * the ModifyTableState node whenever it inserts into a new chunk.
  */
 
-
 static void
 hypertable_insert_begin(CustomScanState *node, EState *estate, int eflags)
 {
 	HypertableInsertState *state = (HypertableInsertState *) node;
-	PlanState  *ps = ExecInitNode(&state->mt->plan, estate, eflags);
+	PlanState *	    ps = ExecInitNode(&state->mt->plan, estate, eflags);
 
 	node->custom_ps = list_make1(ps);
 
 	if (IsA(ps, ModifyTableState))
 	{
 		ModifyTableState *mtstate = (ModifyTableState *) ps;
-		int			i;
+		int		  i;
 
 		/*
 		 * Find all ChunkDispatchState subnodes and set their parent
@@ -45,11 +44,14 @@ hypertable_insert_begin(CustomScanState *node, EState *estate, int eflags)
 		{
 			if (IsA(mtstate->mt_plans[i], CustomScanState))
 			{
-				CustomScanState *csstate = (CustomScanState *) mtstate->mt_plans[i];
+				CustomScanState *csstate =
+				    (CustomScanState *) mtstate->mt_plans[i];
 
-				if (strcmp(csstate->methods->CustomName, CHUNK_DISPATCH_STATE_NAME) == 0)
+				if (strcmp(csstate->methods->CustomName,
+					   CHUNK_DISPATCH_STATE_NAME) == 0)
 				{
-					ChunkDispatchState *cdstate = (ChunkDispatchState *) mtstate->mt_plans[i];
+					ChunkDispatchState *cdstate =
+					    (ChunkDispatchState *) mtstate->mt_plans[i];
 
 					chunk_dispatch_state_set_parent(cdstate, mtstate);
 				}
@@ -89,7 +91,8 @@ hypertable_insert_state_create(CustomScan *cscan)
 {
 	HypertableInsertState *state;
 
-	state = (HypertableInsertState *) newNode(sizeof(HypertableInsertState), T_CustomScanState);
+	state = (HypertableInsertState *) newNode(sizeof(HypertableInsertState),
+						  T_CustomScanState);
 	state->cscan_state.methods = &hypertable_insert_state_methods;
 	state->mt = (ModifyTable *) cscan->scan.plan.lefttree;
 
@@ -109,7 +112,7 @@ hypertable_insert_plan_create(ModifyTable *mt)
 	cscan->methods = &hypertable_insert_plan_methods;
 	cscan->custom_plans = list_make1(mt);
 	cscan->scan.plan.lefttree = &mt->plan;
-	cscan->scan.scanrelid = 0;	/* This is not a real relation */
+	cscan->scan.scanrelid = 0; /* This is not a real relation */
 
 	/* Copy costs, etc., from the original plan */
 	cscan->scan.plan.startup_cost = mt->plan.startup_cost;

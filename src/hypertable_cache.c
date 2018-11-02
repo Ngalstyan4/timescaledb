@@ -16,8 +16,8 @@ static void *hypertable_cache_create_entry(Cache *cache, CacheQuery *query);
 
 typedef struct HypertableCacheQuery
 {
-	CacheQuery	q;
-	Oid			relid;
+	CacheQuery  q;
+	Oid	 relid;
 	const char *schema;
 	const char *table;
 } HypertableCacheQuery;
@@ -30,19 +30,17 @@ hypertable_cache_get_key(CacheQuery *query)
 
 typedef struct
 {
-	Oid			relid;
+	Oid	 relid;
 	Hypertable *hypertable;
 } HypertableCacheEntry;
-
 
 static Cache *
 hypertable_cache_create()
 {
-	MemoryContext ctx = AllocSetContextCreate(CacheMemoryContext,
-											  "Hypertable cache",
-											  ALLOCSET_DEFAULT_SIZES);
+	MemoryContext ctx = AllocSetContextCreate(
+	    CacheMemoryContext, "Hypertable cache", ALLOCSET_DEFAULT_SIZES);
 
-	Cache	   *cache = MemoryContextAlloc(ctx, sizeof(Cache));
+	Cache *cache = MemoryContextAlloc(ctx, sizeof(Cache));
 	Cache		template =
 	{
 		.hctl =
@@ -81,7 +79,7 @@ hypertable_cache_create_entry(Cache *cache, CacheQuery *query)
 {
 	HypertableCacheQuery *hq = (HypertableCacheQuery *) query;
 	HypertableCacheEntry *cache_entry = query->result;
-	int			number_found;
+	int		      number_found;
 
 	if (NULL == hq->schema)
 		hq->schema = get_namespace_name(get_rel_namespace(hq->relid));
@@ -90,26 +88,30 @@ hypertable_cache_create_entry(Cache *cache, CacheQuery *query)
 		hq->table = get_rel_name(hq->relid);
 
 	number_found = hypertable_scan_with_memory_context(hq->schema,
-													   hq->table,
-													   hypertable_tuple_found,
-													   query->result,
-													   AccessShareLock,
-													   false,
-													   cache_memory_ctx(cache));
+							   hq->table,
+							   hypertable_tuple_found,
+							   query->result,
+							   AccessShareLock,
+							   false,
+							   cache_memory_ctx(cache));
 
 	switch (number_found)
 	{
-		case 0:
-			/* Negative cache entry: table is not a hypertable */
-			cache_entry->hypertable = NULL;
-			break;
-		case 1:
-			Assert(strncmp(cache_entry->hypertable->fd.schema_name.data, hq->schema, NAMEDATALEN) == 0);
-			Assert(strncmp(cache_entry->hypertable->fd.table_name.data, hq->table, NAMEDATALEN) == 0);
-			break;
-		default:
-			elog(ERROR, "got an unexpected number of records: %d", number_found);
-			break;
+	case 0:
+		/* Negative cache entry: table is not a hypertable */
+		cache_entry->hypertable = NULL;
+		break;
+	case 1:
+		Assert(strncmp(cache_entry->hypertable->fd.schema_name.data,
+			       hq->schema,
+			       NAMEDATALEN) == 0);
+		Assert(strncmp(cache_entry->hypertable->fd.table_name.data,
+			       hq->table,
+			       NAMEDATALEN) == 0);
+		break;
+	default:
+		elog(ERROR, "got an unexpected number of records: %d", number_found);
+		break;
 	}
 
 	return query->result;
@@ -145,7 +147,8 @@ hypertable_cache_get_entry_by_id(Cache *cache, int32 hypertable_id)
 }
 
 Hypertable *
-hypertable_cache_get_entry_with_table(Cache *cache, Oid relid, const char *schema, const char *table)
+hypertable_cache_get_entry_with_table(Cache *cache, Oid relid, const char *schema,
+				      const char *table)
 {
 	HypertableCacheQuery query = {
 		.relid = relid,

@@ -26,8 +26,7 @@
 
 #define RENDEZVOUS_LOADER_PRESENT_NAME "timescaledb.loader_present"
 
-enum ExtensionState
-{
+enum ExtensionState {
 	/*
 	 * NOT_INSTALLED means that this backend knows that the extension is not
 	 * present.  In this state we know that the proxy table is not present.
@@ -62,31 +61,31 @@ enum ExtensionState
 static char *
 extension_version(void)
 {
-	Datum		result;
-	Relation	rel;
-	SysScanDesc scandesc;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
-	bool		is_null = true;
+	Datum	result;
+	Relation     rel;
+	SysScanDesc  scandesc;
+	HeapTuple    tuple;
+	ScanKeyData  entry[1];
+	bool	 is_null = true;
 	static char *sql_version = NULL;
 
 	rel = heap_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
-				Anum_pg_extension_extname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				DirectFunctionCall1(namein, CStringGetDatum(EXTENSION_NAME))
-		);
+		    Anum_pg_extension_extname,
+		    BTEqualStrategyNumber,
+		    F_NAMEEQ,
+		    DirectFunctionCall1(namein, CStringGetDatum(EXTENSION_NAME)));
 
-	scandesc = systable_beginscan(rel, ExtensionNameIndexId, true,
-								  NULL, 1, entry);
+	scandesc = systable_beginscan(rel, ExtensionNameIndexId, true, NULL, 1, entry);
 
 	tuple = systable_getnext(scandesc);
 
 	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
 	{
-		result = heap_getattr(tuple, Anum_pg_extension_extversion, RelationGetDescr(rel), &is_null);
+		result = heap_getattr(
+		    tuple, Anum_pg_extension_extversion, RelationGetDescr(rel), &is_null);
 
 		if (!is_null)
 		{
@@ -104,11 +103,9 @@ extension_version(void)
 	return sql_version;
 }
 
-
-static bool inline
-proxy_table_exists()
+static bool inline proxy_table_exists()
 {
-	Oid			nsid = get_namespace_oid(CACHE_SCHEMA_NAME, true);
+	Oid nsid = get_namespace_oid(CACHE_SCHEMA_NAME, true);
 
 	if (!OidIsValid(nsid))
 		return false;
@@ -116,14 +113,12 @@ proxy_table_exists()
 	return OidIsValid(get_relname_relid(EXTENSION_PROXY_TABLE, nsid));
 }
 
-static bool inline
-extension_exists()
+static bool inline extension_exists()
 {
 	return OidIsValid(get_extension_oid(EXTENSION_NAME, true));
 }
 
-static bool inline
-extension_is_transitioning()
+static bool inline extension_is_transitioning()
 {
 	/*
 	 * Determine whether the extension is being created or upgraded (as a
@@ -173,10 +168,11 @@ static void
 extension_load_without_preload()
 {
 	/* cannot use GUC variable here since extension not yet loaded */
-	char	   *allow_install_without_preload = GetConfigOptionByName("timescaledb.allow_install_without_preload", NULL, true);
+	char *allow_install_without_preload = GetConfigOptionByName(
+	    "timescaledb.allow_install_without_preload", NULL, true);
 
 	if (allow_install_without_preload == NULL ||
-		strcmp(allow_install_without_preload, "on") != 0)
+	    strcmp(allow_install_without_preload, "on") != 0)
 	{
 		/*
 		 * These are FATAL because otherwise the loader ends up in a weird
@@ -189,33 +185,55 @@ extension_load_without_preload()
 		if (superuser())
 #endif
 		{
-			char	   *config_file = GetConfigOptionByName("config_file", NULL, false);
+			char *config_file =
+			    GetConfigOptionByName("config_file", NULL, false);
 
-			ereport(FATAL,
-					(errmsg("extension \"%s\" must be preloaded", EXTENSION_NAME),
-					 errhint("Please preload the timescaledb library via shared_preload_libraries.\n\n"
-							 "This can be done by editing the config file at: %1$s\n"
-							 "and adding 'timescaledb' to the list in the shared_preload_libraries config.\n"
-							 "	# Modify postgresql.conf:\n	shared_preload_libraries = 'timescaledb'\n\n"
-							 "Another way to do this, if not preloading other libraries, is with the command:\n"
-							 "	echo \"shared_preload_libraries = 'timescaledb'\" >> %1$s \n\n"
-							 "(Will require a database restart.)\n\n"
-							 "If you REALLY know what you are doing and would like to load the library without preloading, you can disable this check with: \n"
-							 "	SET timescaledb.allow_install_without_preload = 'on';", config_file)));
+			ereport(
+			    FATAL,
+			    (errmsg("extension \"%s\" must be preloaded", EXTENSION_NAME),
+			     errhint(
+				 "Please preload the timescaledb library via "
+				 "shared_preload_libraries.\n\n"
+				 "This can be done by editing the config file at: %1$s\n"
+				 "and adding 'timescaledb' to the list in the "
+				 "shared_preload_libraries config.\n"
+				 "	# Modify postgresql.conf:\n	"
+				 "shared_preload_libraries = 'timescaledb'\n\n"
+				 "Another way to do this, if not preloading other "
+				 "libraries, is with the command:\n"
+				 "	echo \"shared_preload_libraries = "
+				 "'timescaledb'\" >> %1$s \n\n"
+				 "(Will require a database restart.)\n\n"
+				 "If you REALLY know what you are doing and would like "
+				 "to load the library without preloading, you can "
+				 "disable this check with: \n"
+				 "	SET timescaledb.allow_install_without_preload = "
+				 "'on';",
+				 config_file)));
 		}
 		else
 		{
-			ereport(FATAL,
-					(errmsg("extension \"%s\" must be preloaded", EXTENSION_NAME),
-					 errhint("Please preload the timescaledb library via shared_preload_libraries.\n\n"
-							 "This can be done by editing the postgres config file \n"
-							 "and adding 'timescaledb' to the list in the shared_preload_libraries config.\n"
-							 "	# Modify postgresql.conf:\n	shared_preload_libraries = 'timescaledb'\n\n"
-							 "Another way to do this, if not preloading other libraries, is with the command:\n"
-							 "	echo \"shared_preload_libraries = 'timescaledb'\" >> /path/to/config/file \n\n"
-							 "(Will require a database restart.)\n\n"
-							 "If you REALLY know what you are doing and would like to load the library without preloading, you can disable this check with: \n"
-							 "	SET timescaledb.allow_install_without_preload = 'on';")));
+			ereport(
+			    FATAL,
+			    (errmsg("extension \"%s\" must be preloaded", EXTENSION_NAME),
+			     errhint(
+				 "Please preload the timescaledb library via "
+				 "shared_preload_libraries.\n\n"
+				 "This can be done by editing the postgres config file \n"
+				 "and adding 'timescaledb' to the list in the "
+				 "shared_preload_libraries config.\n"
+				 "	# Modify postgresql.conf:\n	"
+				 "shared_preload_libraries = 'timescaledb'\n\n"
+				 "Another way to do this, if not preloading other "
+				 "libraries, is with the command:\n"
+				 "	echo \"shared_preload_libraries = "
+				 "'timescaledb'\" >> /path/to/config/file \n\n"
+				 "(Will require a database restart.)\n\n"
+				 "If you REALLY know what you are doing and would like "
+				 "to load the library without preloading, you can "
+				 "disable this check with: \n"
+				 "	SET timescaledb.allow_install_without_preload = "
+				 "'on';")));
 		}
 
 		return;

@@ -22,8 +22,7 @@
  * Generally, definitions and naming should roughly follow how things are done
  * in Postgres internally.
  */
-typedef enum CatalogTable
-{
+typedef enum CatalogTable {
 	HYPERTABLE = 0,
 	DIMENSION,
 	DIMENSION_SLICE,
@@ -40,24 +39,31 @@ typedef enum CatalogTable
 #define INVALID_CATALOG_TABLE _MAX_CATALOG_TABLES
 #define INVALID_INDEXID -1
 
-#define CATALOG_INDEX(catalog, tableid, indexid) \
-	(indexid == INVALID_INDEXID ? InvalidOid : (catalog)->tables[tableid].index_ids[indexid])
+#define CATALOG_INDEX(catalog, tableid, indexid)                                         \
+	(indexid == INVALID_INDEXID ? InvalidOid                                         \
+				    : (catalog)->tables[tableid].index_ids[indexid])
 
-#define CatalogInternalCall1(func, datum1) \
+#define CatalogInternalCall1(func, datum1)                                               \
 	OidFunctionCall1(catalog_get_internal_function_id(catalog_get(), func), datum1)
-#define CatalogInternalCall2(func, datum1, datum2) \
-	OidFunctionCall2(catalog_get_internal_function_id(catalog_get(), func), datum1, datum2)
-#define CatalogInternalCall3(func, datum1, datum2, datum3) \
-	OidFunctionCall3(catalog_get_internal_function_id(catalog_get(), func), datum1, datum2, datum3)
-#define CatalogInternalCall4(func, datum1, datum2, datum3, datum4) \
-	OidFunctionCall4(catalog_get_internal_function_id(catalog_get(), func), datum1, datum2, datum3, datum4)
+#define CatalogInternalCall2(func, datum1, datum2)                                       \
+	OidFunctionCall2(                                                                \
+	    catalog_get_internal_function_id(catalog_get(), func), datum1, datum2)
+#define CatalogInternalCall3(func, datum1, datum2, datum3)                               \
+	OidFunctionCall3(catalog_get_internal_function_id(catalog_get(), func),          \
+			 datum1,                                                         \
+			 datum2,                                                         \
+			 datum3)
+#define CatalogInternalCall4(func, datum1, datum2, datum3, datum4)                       \
+	OidFunctionCall4(catalog_get_internal_function_id(catalog_get(), func),          \
+			 datum1,                                                         \
+			 datum2,                                                         \
+			 datum3,                                                         \
+			 datum4)
 
-typedef enum InternalFunction
-{
+typedef enum InternalFunction {
 	DDL_ADD_CHUNK_CONSTRAINT,
 	_MAX_INTERNAL_FUNCTIONS,
 } InternalFunction;
-
 
 /******************************
  *
@@ -68,8 +74,7 @@ typedef enum InternalFunction
 #define HYPERTABLE_TABLE_NAME "hypertable"
 
 /* Hypertable table attribute numbers */
-enum Anum_hypertable
-{
+enum Anum_hypertable {
 	Anum_hypertable_id = 1,
 	Anum_hypertable_schema_name,
 	Anum_hypertable_table_name,
@@ -82,37 +87,33 @@ enum Anum_hypertable
 	_Anum_hypertable_max,
 };
 
-#define Natts_hypertable \
-	(_Anum_hypertable_max - 1)
+#define Natts_hypertable (_Anum_hypertable_max - 1)
 
 typedef struct FormData_hypertable
 {
-	int32		id;
-	NameData	schema_name;
-	NameData	table_name;
-	NameData	associated_schema_name;
-	NameData	associated_table_prefix;
-	int16		num_dimensions;
-	NameData	chunk_sizing_func_schema;
-	NameData	chunk_sizing_func_name;
-	int64		chunk_target_size;
+	int32    id;
+	NameData schema_name;
+	NameData table_name;
+	NameData associated_schema_name;
+	NameData associated_table_prefix;
+	int16    num_dimensions;
+	NameData chunk_sizing_func_schema;
+	NameData chunk_sizing_func_name;
+	int64    chunk_target_size;
 } FormData_hypertable;
 
 typedef FormData_hypertable *Form_hypertable;
 
 /* Hypertable primary index attribute numbers */
-enum Anum_hypertable_pkey_idx
-{
+enum Anum_hypertable_pkey_idx {
 	Anum_hypertable_pkey_idx_id = 1,
 	_Anum_hypertable_pkey_max,
 };
 
-#define Natts_hypertable_pkey_idx \
-	(_Anum_hypertable_pkey_max - 1)
+#define Natts_hypertable_pkey_idx (_Anum_hypertable_pkey_max - 1)
 
 /* Hypertable name (schema,table) index attribute numbers */
-enum Anum_hypertable_name_idx
-{
+enum Anum_hypertable_name_idx {
 	Anum_hypertable_name_idx_schema = 1,
 	Anum_hypertable_name_idx_table,
 	_Anum_hypertable_name_max,
@@ -120,11 +121,9 @@ enum Anum_hypertable_name_idx
 
 #define Natts_hypertable_name_idx (_Anum_hypertable_name_max - 1)
 
-enum
-{
-	HYPERTABLE_ID_INDEX = 0,
-	HYPERTABLE_NAME_INDEX,
-	_MAX_HYPERTABLE_INDEX,
+enum { HYPERTABLE_ID_INDEX = 0,
+       HYPERTABLE_NAME_INDEX,
+       _MAX_HYPERTABLE_INDEX,
 };
 
 /******************************
@@ -135,8 +134,7 @@ enum
 
 #define DIMENSION_TABLE_NAME "dimension"
 
-enum Anum_dimension
-{
+enum Anum_dimension {
 	Anum_dimension_id = 1,
 	Anum_dimension_hypertable_id,
 	Anum_dimension_column_name,
@@ -149,50 +147,43 @@ enum Anum_dimension
 	_Anum_dimension_max,
 };
 
-#define Natts_dimension \
-	(_Anum_dimension_max - 1)
+#define Natts_dimension (_Anum_dimension_max - 1)
 
 typedef struct FormData_dimension
 {
-	int32		id;
-	int32		hypertable_id;
-	NameData	column_name;
-	Oid			column_type;
-	bool		aligned;
+	int32    id;
+	int32    hypertable_id;
+	NameData column_name;
+	Oid      column_type;
+	bool     aligned;
 	/* closed (space) columns */
-	int16		num_slices;
-	NameData	partitioning_func_schema;
-	NameData	partitioning_func;
+	int16    num_slices;
+	NameData partitioning_func_schema;
+	NameData partitioning_func;
 	/* open (time) columns */
-	int64		interval_length;
+	int64 interval_length;
 } FormData_dimension;
 
 typedef FormData_dimension *Form_dimension;
 
-enum Anum_dimension_id_idx
-{
+enum Anum_dimension_id_idx {
 	Anum_dimension_id_idx_id = 1,
 	_Anum_dimension_id_idx_max,
 };
 
-#define Natts_dimension_id_idx \
-	(_Anum_dimension_id_idx_max - 1)
+#define Natts_dimension_id_idx (_Anum_dimension_id_idx_max - 1)
 
-enum Anum_dimension_hypertable_id_column_name_idx
-{
+enum Anum_dimension_hypertable_id_column_name_idx {
 	Anum_dimension_hypertable_id_column_name_idx_hypertable_id = 1,
 	Anum_dimension_hypertable_id_column_name_idx_column_name,
 	_Anum_dimension_hypertable_id_idx_max,
 };
 
-#define Natts_dimension_hypertable_id_idx \
-	(_Anum_dimension_hypertable_id_idx_max - 1)
+#define Natts_dimension_hypertable_id_idx (_Anum_dimension_hypertable_id_idx_max - 1)
 
-enum
-{
-	DIMENSION_ID_IDX = 0,
-	DIMENSION_HYPERTABLE_ID_COLUMN_NAME_IDX,
-	_MAX_DIMENSION_INDEX,
+enum { DIMENSION_ID_IDX = 0,
+       DIMENSION_HYPERTABLE_ID_COLUMN_NAME_IDX,
+       _MAX_DIMENSION_INDEX,
 };
 
 /******************************
@@ -203,8 +194,7 @@ enum
 
 #define DIMENSION_SLICE_TABLE_NAME "dimension_slice"
 
-enum Anum_dimension_slice
-{
+enum Anum_dimension_slice {
 	Anum_dimension_slice_id = 1,
 	Anum_dimension_slice_dimension_id,
 	Anum_dimension_slice_range_start,
@@ -212,44 +202,38 @@ enum Anum_dimension_slice
 	_Anum_dimension_slice_max,
 };
 
-#define Natts_dimension_slice \
-	(_Anum_dimension_slice_max - 1)
+#define Natts_dimension_slice (_Anum_dimension_slice_max - 1)
 
 typedef struct FormData_dimension_slice
 {
-	int32		id;
-	int32		dimension_id;
-	int64		range_start;
-	int64		range_end;
+	int32 id;
+	int32 dimension_id;
+	int64 range_start;
+	int64 range_end;
 } FormData_dimension_slice;
 
 typedef FormData_dimension_slice *Form_dimension_slice;
 
-enum Anum_dimension_slice_id_idx
-{
+enum Anum_dimension_slice_id_idx {
 	Anum_dimension_slice_id_idx_id = 1,
 	_Anum_dimension_slice_id_idx_max,
 };
 
-#define Natts_dimension_slice_id_idx \
-	(_Anum_dimension_slice_id_idx_max - 1)
+#define Natts_dimension_slice_id_idx (_Anum_dimension_slice_id_idx_max - 1)
 
-enum Anum_dimension_slice_dimension_id_range_start_range_end_idx
-{
+enum Anum_dimension_slice_dimension_id_range_start_range_end_idx {
 	Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id = 1,
 	Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
 	Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
 	_Anum_dimension_slice_dimension_id_range_start_range_end_idx_max,
 };
 
-#define Natts_dimension_slice_dimension_id_range_start_range_end_idx \
+#define Natts_dimension_slice_dimension_id_range_start_range_end_idx                     \
 	(_Anum_dimension_slice_dimension_id_range_start_range_end_idx_max - 1)
 
-enum
-{
-	DIMENSION_SLICE_ID_IDX = 0,
-	DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-	_MAX_DIMENSION_SLICE_INDEX,
+enum { DIMENSION_SLICE_ID_IDX = 0,
+       DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+       _MAX_DIMENSION_SLICE_INDEX,
 };
 
 /*************************
@@ -260,8 +244,7 @@ enum
 
 #define CHUNK_TABLE_NAME "chunk"
 
-enum Anum_chunk
-{
+enum Anum_chunk {
 	Anum_chunk_id = 1,
 	Anum_chunk_hypertable_id,
 	Anum_chunk_schema_name,
@@ -269,43 +252,36 @@ enum Anum_chunk
 	_Anum_chunk_max,
 };
 
-#define Natts_chunk \
-	(_Anum_chunk_max - 1)
+#define Natts_chunk (_Anum_chunk_max - 1)
 
 typedef struct FormData_chunk
 {
-	int32		id;
-	int32		hypertable_id;
-	NameData	schema_name;
-	NameData	table_name;
+	int32    id;
+	int32    hypertable_id;
+	NameData schema_name;
+	NameData table_name;
 } FormData_chunk;
 
 typedef FormData_chunk *Form_chunk;
 
-enum
-{
-	CHUNK_ID_INDEX = 0,
-	CHUNK_HYPERTABLE_ID_INDEX,
-	CHUNK_SCHEMA_NAME_INDEX,
-	_MAX_CHUNK_INDEX,
+enum { CHUNK_ID_INDEX = 0,
+       CHUNK_HYPERTABLE_ID_INDEX,
+       CHUNK_SCHEMA_NAME_INDEX,
+       _MAX_CHUNK_INDEX,
 };
 
-enum Anum_chunk_idx
-{
+enum Anum_chunk_idx {
 	Anum_chunk_idx_id = 1,
 };
 
-enum Anum_chunk_hypertable_id_idx
-{
+enum Anum_chunk_hypertable_id_idx {
 	Anum_chunk_hypertable_id_idx_hypertable_id = 1,
 };
 
-enum Anum_chunk_schema_name_idx
-{
+enum Anum_chunk_schema_name_idx {
 	Anum_chunk_schema_name_idx_schema_name = 1,
 	Anum_chunk_schema_name_idx_table_name,
 };
-
 
 /************************************
  *
@@ -315,8 +291,7 @@ enum Anum_chunk_schema_name_idx
 
 #define CHUNK_CONSTRAINT_TABLE_NAME "chunk_constraint"
 
-enum Anum_chunk_constraint
-{
+enum Anum_chunk_constraint {
 	Anum_chunk_constraint_chunk_id = 1,
 	Anum_chunk_constraint_dimension_slice_id,
 	Anum_chunk_constraint_constraint_name,
@@ -324,36 +299,31 @@ enum Anum_chunk_constraint
 	_Anum_chunk_constraint_max,
 };
 
-#define Natts_chunk_constraint \
-	(_Anum_chunk_constraint_max - 1)
+#define Natts_chunk_constraint (_Anum_chunk_constraint_max - 1)
 
 /* Do Not use GET_STRUCT with FormData_chunk_constraint. It contains NULLS */
 typedef struct FormData_chunk_constraint
 {
-	int32		chunk_id;
-	int32		dimension_slice_id;
-	NameData	constraint_name;
-	NameData	hypertable_constraint_name;
+	int32    chunk_id;
+	int32    dimension_slice_id;
+	NameData constraint_name;
+	NameData hypertable_constraint_name;
 } FormData_chunk_constraint;
 
 typedef FormData_chunk_constraint *Form_chunk_constraint;
 
-enum
-{
-	CHUNK_CONSTRAINT_CHUNK_ID_CONSTRAINT_NAME_IDX = 0,
-	CHUNK_CONSTRAINT_CHUNK_ID_DIMENSION_SLICE_ID_IDX,
-	_MAX_CHUNK_CONSTRAINT_INDEX,
+enum { CHUNK_CONSTRAINT_CHUNK_ID_CONSTRAINT_NAME_IDX = 0,
+       CHUNK_CONSTRAINT_CHUNK_ID_DIMENSION_SLICE_ID_IDX,
+       _MAX_CHUNK_CONSTRAINT_INDEX,
 };
 
-enum Anum_chunk_constraint_chunk_id_dimension_slice_id_idx
-{
+enum Anum_chunk_constraint_chunk_id_dimension_slice_id_idx {
 	Anum_chunk_constraint_chunk_id_dimension_slice_id_idx_chunk_id = 1,
 	Anum_chunk_constraint_chunk_id_dimension_slice_id_idx_dimension_slice_id,
 	_Anum_chunk_constraint_chunk_id_dimension_slice_id_idx_max,
 };
 
-enum Anum_chunk_constraint_chunk_id_constraint_name_idx
-{
+enum Anum_chunk_constraint_chunk_id_constraint_name_idx {
 	Anum_chunk_constraint_chunk_id_constraint_name_idx_chunk_id = 1,
 	Anum_chunk_constraint_chunk_id_constraint_name_idx_constraint_name,
 	_Anum_chunk_constraint_chunk_id_constraint_name_idx_max,
@@ -367,8 +337,7 @@ enum Anum_chunk_constraint_chunk_id_constraint_name_idx
 
 #define CHUNK_INDEX_TABLE_NAME "chunk_index"
 
-enum Anum_chunk_index
-{
+enum Anum_chunk_index {
 	Anum_chunk_index_chunk_id = 1,
 	Anum_chunk_index_index_name,
 	Anum_chunk_index_hypertable_id,
@@ -376,35 +345,30 @@ enum Anum_chunk_index
 	_Anum_chunk_index_max,
 };
 
-#define Natts_chunk_index \
-	(_Anum_chunk_index_max - 1)
+#define Natts_chunk_index (_Anum_chunk_index_max - 1)
 
 typedef struct FormData_chunk_index
 {
-	int32		chunk_id;
-	NameData	index_name;
-	int32		hypertable_id;
-	NameData	hypertable_index_name;
+	int32    chunk_id;
+	NameData index_name;
+	int32    hypertable_id;
+	NameData hypertable_index_name;
 } FormData_chunk_index;
 
 typedef FormData_chunk_index *Form_chunk_index;
 
-enum
-{
-	CHUNK_INDEX_CHUNK_ID_INDEX_NAME_IDX = 0,
-	CHUNK_INDEX_HYPERTABLE_ID_HYPERTABLE_INDEX_NAME_IDX,
-	_MAX_CHUNK_INDEX_INDEX,
+enum { CHUNK_INDEX_CHUNK_ID_INDEX_NAME_IDX = 0,
+       CHUNK_INDEX_HYPERTABLE_ID_HYPERTABLE_INDEX_NAME_IDX,
+       _MAX_CHUNK_INDEX_INDEX,
 };
 
-enum Anum_chunk_index_chunk_id_index_name_idx
-{
+enum Anum_chunk_index_chunk_id_index_name_idx {
 	Anum_chunk_index_chunk_id_index_name_idx_chunk_id = 1,
 	Anum_chunk_index_chunk_id_index_name_idx_index_name,
 	_Anum_chunk_index_chunk_id_index_name_idx_max,
 };
 
-enum Anum_chunk_index_hypertable_id_hypertable_index_name_idx
-{
+enum Anum_chunk_index_hypertable_id_hypertable_index_name_idx {
 	Anum_chunk_index_hypertable_id_hypertable_index_name_idx_hypertable_id = 1,
 	Anum_chunk_index_hypertable_id_hypertable_index_name_idx_hypertable_index_name,
 	Anum_chunk_index_hypertable_id_hypertable_index_name_idx_max,
@@ -418,46 +382,40 @@ enum Anum_chunk_index_hypertable_id_hypertable_index_name_idx
 
 #define TABLESPACE_TABLE_NAME "tablespace"
 
-enum Anum_tablespace
-{
+enum Anum_tablespace {
 	Anum_tablespace_id = 1,
 	Anum_tablespace_hypertable_id,
 	Anum_tablespace_tablespace_name,
 	_Anum_tablespace_max,
 };
 
-#define Natts_tablespace \
-	(_Anum_tablespace_max - 1)
+#define Natts_tablespace (_Anum_tablespace_max - 1)
 
 typedef struct FormData_tablespace
 {
-	int32		id;
-	int32		hypertable_id;
-	NameData	tablespace_name;
+	int32    id;
+	int32    hypertable_id;
+	NameData tablespace_name;
 } FormData_tablespace;
 
 typedef FormData_tablespace *Form_tablespace;
 
-enum
-{
-	TABLESPACE_PKEY_IDX = 0,
-	TABLESPACE_HYPERTABLE_ID_TABLESPACE_NAME_IDX,
-	_MAX_TABLESPACE_INDEX,
+enum { TABLESPACE_PKEY_IDX = 0,
+       TABLESPACE_HYPERTABLE_ID_TABLESPACE_NAME_IDX,
+       _MAX_TABLESPACE_INDEX,
 };
 
-enum Anum_tablespace_pkey_idx
-{
+enum Anum_tablespace_pkey_idx {
 	Anum_tablespace_pkey_idx_tablespace_id = 1,
 	_Anum_tablespace_pkey_idx_max,
 };
 
 typedef struct FormData_tablespace_pkey_idx
 {
-	int32		tablespace_id;
-}			FormData_tablespace_pkey_idx;
+	int32 tablespace_id;
+} FormData_tablespace_pkey_idx;
 
-enum Anum_tablespace_hypertable_id_tablespace_name_idx
-{
+enum Anum_tablespace_hypertable_id_tablespace_name_idx {
 	Anum_tablespace_hypertable_id_tablespace_name_idx_hypertable_id = 1,
 	Anum_tablespace_hypertable_id_tablespace_name_idx_tablespace_name,
 	_Anum_tablespace_hypertable_id_tablespace_name_idx_max,
@@ -465,9 +423,9 @@ enum Anum_tablespace_hypertable_id_tablespace_name_idx
 
 typedef struct FormData_tablespace_hypertable_id_tablespace_name_idx
 {
-	int32		hypertable_id;
-	NameData	tablespace_name;
-}			FormData_tablespace_hypertable_id_tablespace_name_idx;
+	int32    hypertable_id;
+	NameData tablespace_name;
+} FormData_tablespace_hypertable_id_tablespace_name_idx;
 
 /************************************
  *
@@ -477,8 +435,7 @@ typedef struct FormData_tablespace_hypertable_id_tablespace_name_idx
 
 #define BGW_JOB_TABLE_NAME "bgw_job"
 
-enum Anum_bgw_job
-{
+enum Anum_bgw_job {
 	Anum_bgw_job_id = 1,
 	Anum_bgw_job_application_name,
 	Anum_bgw_job_job_type,
@@ -489,38 +446,31 @@ enum Anum_bgw_job
 	_Anum_bgw_job_max,
 };
 
-#define Natts_bgw_job \
-	(_Anum_bgw_job_max - 1)
+#define Natts_bgw_job (_Anum_bgw_job_max - 1)
 
 typedef struct FormData_bgw_job
 {
-	int32		id;
-	NameData	application_name;
-	NameData	job_type;
-	Interval	schedule_interval;
-	Interval	max_runtime;
-	int32		max_retries;
-	Interval	retry_period;
+	int32    id;
+	NameData application_name;
+	NameData job_type;
+	Interval schedule_interval;
+	Interval max_runtime;
+	int32    max_retries;
+	Interval retry_period;
 } FormData_bgw_job;
 
 typedef FormData_bgw_job *Form_bgw_job;
 
-enum
-{
-	BGW_JOB_PKEY_IDX = 0,
-	_MAX_BGW_JOB_INDEX,
+enum { BGW_JOB_PKEY_IDX = 0,
+       _MAX_BGW_JOB_INDEX,
 };
 
-enum Anum_bgw_job_pkey_idx
-{
+enum Anum_bgw_job_pkey_idx {
 	Anum_bgw_job_pkey_idx_id = 1,
 	_Anum_bgw_job_pkey_idx_max,
 };
 
-#define Natts_bjw_job_pkey_idx \
-	(_Anum_bgw_job_pkey_idx_max - 1)
-
-
+#define Natts_bjw_job_pkey_idx (_Anum_bgw_job_pkey_idx_max - 1)
 
 /************************************
  *
@@ -530,8 +480,7 @@ enum Anum_bgw_job_pkey_idx
 
 #define BGW_JOB_STAT_TABLE_NAME "bgw_job_stat"
 
-enum Anum_bgw_job_stat
-{
+enum Anum_bgw_job_stat {
 	Anum_bgw_job_stat_job_id = 1,
 	Anum_bgw_job_stat_last_start,
 	Anum_bgw_job_stat_last_finish,
@@ -547,41 +496,36 @@ enum Anum_bgw_job_stat
 	_Anum_bgw_job_stat_max,
 };
 
-#define Natts_bgw_job_stat \
-	(_Anum_bgw_job_stat_max - 1)
+#define Natts_bgw_job_stat (_Anum_bgw_job_stat_max - 1)
 
 typedef struct FormData_bgw_job_stat
 {
-	int32		id;
+	int32       id;
 	TimestampTz last_start;
 	TimestampTz last_finish;
 	TimestampTz next_start;
-	bool		last_run_success;
-	int64		total_runs;
-	Interval	total_duration;
-	int64		total_success;
-	int64		total_failures;
-	int64		total_crashes;
-	int32		consecutive_failures;
-	int32		consecutive_crashes;
+	bool	last_run_success;
+	int64       total_runs;
+	Interval    total_duration;
+	int64       total_success;
+	int64       total_failures;
+	int64       total_crashes;
+	int32       consecutive_failures;
+	int32       consecutive_crashes;
 } FormData_bgw_job_stat;
 
 typedef FormData_bgw_job_stat *Form_bgw_job_stat;
 
-enum
-{
-	BGW_JOB_STAT_PKEY_IDX = 0,
-	_MAX_BGW_JOB_STAT_INDEX,
+enum { BGW_JOB_STAT_PKEY_IDX = 0,
+       _MAX_BGW_JOB_STAT_INDEX,
 };
 
-enum Anum_bgw_job_stat_pkey_idx
-{
+enum Anum_bgw_job_stat_pkey_idx {
 	Anum_bgw_job_stat_pkey_idx_job_id = 1,
 	_Anum_bgw_job_stat_pkey_idx_max,
 };
 
-#define Natts_bjw_job_stat_pkey_idx \
-	(_Anum_bgw_job_stat_pkey_idx_max - 1)
+#define Natts_bjw_job_stat_pkey_idx (_Anum_bgw_job_stat_pkey_idx_max - 1)
 
 /******************************
  *
@@ -589,40 +533,34 @@ enum Anum_bgw_job_stat_pkey_idx
  *
  ******************************/
 
-#define INSTALLATION_METADATA_TABLE_NAME		"installation_metadata"
+#define INSTALLATION_METADATA_TABLE_NAME "installation_metadata"
 
-enum Anum_installation_metadata
-{
+enum Anum_installation_metadata {
 	Anum_installation_metadata_key = 1,
 	Anum_installation_metadata_value,
 	_Anum_installation_metadata_max,
 };
 
-#define Natts_installation_metadata \
-	(_Anum_installation_metadata_max - 1)
+#define Natts_installation_metadata (_Anum_installation_metadata_max - 1)
 
 typedef struct FormData_installation_metadata
 {
-	NameData	key;
-	text	   *value;
+	NameData key;
+	text *   value;
 } FormData_installation_metadata;
 
 typedef FormData_installation_metadata *Form_installation_metadata;
 
 /* installation_metadata primary index attribute numbers */
-enum Anum_installation_metadata_pkey_idx
-{
+enum Anum_installation_metadata_pkey_idx {
 	Anum_installation_metadata_pkey_idx_id = 1,
 	_Anum_installation_metadata_pkey_max,
 };
 
-#define Natts_installation_metadata_pkey_idx \
-	(_Anum_installation_metadata_pkey_max - 1)
+#define Natts_installation_metadata_pkey_idx (_Anum_installation_metadata_pkey_max - 1)
 
-enum
-{
-	INSTALLATION_METADATA_PKEY_IDX = 0,
-	_MAX_INSTALLATION_METADATA_INDEX,
+enum { INSTALLATION_METADATA_PKEY_IDX = 0,
+       _MAX_INSTALLATION_METADATA_INDEX,
 };
 
 /*
@@ -631,8 +569,7 @@ enum
  */
 #define _MAX_TABLE_INDEXES 5
 
-typedef enum CacheType
-{
+typedef enum CacheType {
 	CACHE_TYPE_HYPERTABLE,
 	CACHE_TYPE_CHUNK,
 	_MAX_CACHE_TYPES
@@ -640,64 +577,63 @@ typedef enum CacheType
 
 typedef struct Catalog
 {
-	char		database_name[NAMEDATALEN];
-	Oid			database_id;
-	Oid			schema_id;
+	char database_name[NAMEDATALEN];
+	Oid  database_id;
+	Oid  schema_id;
 	struct
 	{
 		const char *schema_name;
 		const char *name;
-		Oid			id;
-		Oid			serial_relid;
-		Oid			index_ids[_MAX_TABLE_INDEXES];
-	}			tables[_MAX_CATALOG_TABLES];
+		Oid	 id;
+		Oid	 serial_relid;
+		Oid	 index_ids[_MAX_TABLE_INDEXES];
+	} tables[_MAX_CATALOG_TABLES];
 
-	Oid			cache_schema_id;
+	Oid cache_schema_id;
 	struct
 	{
-		Oid			inval_proxy_id;
-	}			caches[_MAX_CACHE_TYPES];
+		Oid inval_proxy_id;
+	} caches[_MAX_CACHE_TYPES];
 
-	Oid			owner_uid;
-	Oid			internal_schema_id;
+	Oid owner_uid;
+	Oid internal_schema_id;
 	struct
 	{
-		Oid			function_id;
-	}			functions[_MAX_INTERNAL_FUNCTIONS];
+		Oid function_id;
+	} functions[_MAX_INTERNAL_FUNCTIONS];
 } Catalog;
-
 
 typedef struct CatalogSecurityContext
 {
-	Oid			saved_uid;
-	int			saved_security_context;
+	Oid saved_uid;
+	int saved_security_context;
 } CatalogSecurityContext;
 
-bool		catalog_is_valid(Catalog *catalog);
-Catalog    *catalog_get(void);
-void		catalog_reset(void);
+bool     catalog_is_valid(Catalog *catalog);
+Catalog *catalog_get(void);
+void     catalog_reset(void);
 
-Oid			catalog_get_cache_proxy_id(Catalog *catalog, CacheType type);
+Oid catalog_get_cache_proxy_id(Catalog *catalog, CacheType type);
 
-Oid			catalog_get_internal_function_id(Catalog *catalog, InternalFunction func);
+Oid catalog_get_internal_function_id(Catalog *catalog, InternalFunction func);
 
-bool		catalog_become_owner(Catalog *catalog, CatalogSecurityContext *sec_ctx);
-void		catalog_restore_user(CatalogSecurityContext *sec_ctx);
+bool catalog_become_owner(Catalog *catalog, CatalogSecurityContext *sec_ctx);
+void catalog_restore_user(CatalogSecurityContext *sec_ctx);
 
-int64		catalog_table_next_seq_id(Catalog *catalog, CatalogTable table);
-Oid			catalog_table_get_id(Catalog *catalog, CatalogTable table);
+int64	catalog_table_next_seq_id(Catalog *catalog, CatalogTable table);
+Oid	  catalog_table_get_id(Catalog *catalog, CatalogTable table);
 CatalogTable catalog_table_get(Catalog *catalog, Oid relid);
-const char *catalog_table_name(CatalogTable table);
+const char * catalog_table_name(CatalogTable table);
 
-void		catalog_insert(Relation rel, HeapTuple tuple);
-void		catalog_insert_values(Relation rel, TupleDesc tupdesc, Datum *values, bool *nulls);
-void		catalog_update_tid(Relation rel, ItemPointer tid, HeapTuple tuple);
-void		catalog_update(Relation rel, HeapTuple tuple);
-void		catalog_delete_tid(Relation rel, ItemPointer tid);
-void		catalog_delete(Relation rel, HeapTuple tuple);
-void		catalog_invalidate_cache(Oid catalog_relid, CmdType operation);
+void catalog_insert(Relation rel, HeapTuple tuple);
+void catalog_insert_values(Relation rel, TupleDesc tupdesc, Datum *values, bool *nulls);
+void catalog_update_tid(Relation rel, ItemPointer tid, HeapTuple tuple);
+void catalog_update(Relation rel, HeapTuple tuple);
+void catalog_delete_tid(Relation rel, ItemPointer tid);
+void catalog_delete(Relation rel, HeapTuple tuple);
+void catalog_invalidate_cache(Oid catalog_relid, CmdType operation);
 
 /* Delete only: do not increment command counter or invalidate caches */
-void		catalog_delete_only(Relation rel, HeapTuple tuple);
+void catalog_delete_only(Relation rel, HeapTuple tuple);
 
-#endif							/* TIMESCALEDB_CATALOG_H */
+#endif /* TIMESCALEDB_CATALOG_H */

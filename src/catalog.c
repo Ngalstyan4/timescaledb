@@ -76,79 +76,83 @@ static const TableInfoDef catalog_table_names[_MAX_CATALOG_TABLES + 1] = {
 
 typedef struct TableIndexDef
 {
-	int			length;
-	char	  **names;
+	int    length;
+	char **names;
 } TableIndexDef;
 
 static const TableIndexDef catalog_table_index_definitions[_MAX_CATALOG_TABLES] = {
-	[HYPERTABLE] = {
-		.length = _MAX_HYPERTABLE_INDEX,
-		.names = (char *[]) {
-			[HYPERTABLE_ID_INDEX] = "hypertable_pkey",
-			[HYPERTABLE_NAME_INDEX] = "hypertable_schema_name_table_name_key",
-		}
-	},
-	[DIMENSION] = {
-		.length = _MAX_DIMENSION_INDEX,
-		.names = (char *[]) {
-			[DIMENSION_ID_IDX] = "dimension_pkey",
-			[DIMENSION_HYPERTABLE_ID_COLUMN_NAME_IDX] = "dimension_hypertable_id_column_name_key",
-		}
-	},
-	[DIMENSION_SLICE] = {
-		.length = _MAX_DIMENSION_SLICE_INDEX,
-		.names = (char *[]) {
-			[DIMENSION_SLICE_ID_IDX] = "dimension_slice_pkey",
-			[DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX] = "dimension_slice_dimension_id_range_start_range_end_key",
-		}
-	},
-	[CHUNK] = {
-		.length = _MAX_CHUNK_INDEX,
-		.names = (char *[]) {
-			[CHUNK_ID_INDEX] = "chunk_pkey",
-			[CHUNK_HYPERTABLE_ID_INDEX] = "chunk_hypertable_id_idx",
-			[CHUNK_SCHEMA_NAME_INDEX] = "chunk_schema_name_table_name_key",
-		}
-	},
-	[CHUNK_CONSTRAINT] = {
-		.length = _MAX_CHUNK_CONSTRAINT_INDEX,
-		.names = (char *[]) {
-			[CHUNK_CONSTRAINT_CHUNK_ID_CONSTRAINT_NAME_IDX] = "chunk_constraint_chunk_id_constraint_name_key",
-			[CHUNK_CONSTRAINT_CHUNK_ID_DIMENSION_SLICE_ID_IDX] = "chunk_constraint_chunk_id_dimension_slice_id_idx",
-		}
-	},
-	[CHUNK_INDEX] = {
-		.length = _MAX_CHUNK_INDEX_INDEX,
-		.names = (char *[]) {
-			[CHUNK_INDEX_CHUNK_ID_INDEX_NAME_IDX] = "chunk_index_chunk_id_index_name_key",
-			[CHUNK_INDEX_HYPERTABLE_ID_HYPERTABLE_INDEX_NAME_IDX] = "chunk_index_hypertable_id_hypertable_index_name_idx",
-		}
-	},
-	[TABLESPACE] = {
-		.length = _MAX_TABLESPACE_INDEX,
-		.names = (char *[]) {
-			[TABLESPACE_PKEY_IDX] = "tablespace_pkey",
-			[TABLESPACE_HYPERTABLE_ID_TABLESPACE_NAME_IDX] = "tablespace_hypertable_id_tablespace_name_key",
-		}
-	},
-	[BGW_JOB] = {
-		.length = _MAX_BGW_JOB_INDEX,
-		.names = (char *[]) {
-			[BGW_JOB_PKEY_IDX] = "bgw_job_pkey",
-		}
-	},
-	[BGW_JOB_STAT] = {
-		.length = _MAX_BGW_JOB_STAT_INDEX,
-		.names = (char *[]) {
-			[BGW_JOB_STAT_PKEY_IDX] = "bgw_job_stat_pkey",
-		}
-	},
-	[INSTALLATION_METADATA] = {
-		.length = _MAX_INSTALLATION_METADATA_INDEX,
-		.names = (char *[]) {
-			[INSTALLATION_METADATA_PKEY_IDX] = "installation_metadata_pkey",
-		}
-	}
+	[HYPERTABLE] = { .length = _MAX_HYPERTABLE_INDEX,
+			 .names =
+			     (char *[]){
+				 [HYPERTABLE_ID_INDEX] = "hypertable_pkey",
+				 [HYPERTABLE_NAME_INDEX] =
+				     "hypertable_schema_name_table_name_key",
+			     } },
+	[DIMENSION] = { .length = _MAX_DIMENSION_INDEX,
+			.names =
+			    (char *[]){
+				[DIMENSION_ID_IDX] = "dimension_pkey",
+				[DIMENSION_HYPERTABLE_ID_COLUMN_NAME_IDX] =
+				    "dimension_hypertable_id_column_name_key",
+			    } },
+	[DIMENSION_SLICE] = { .length = _MAX_DIMENSION_SLICE_INDEX,
+			      .names =
+				  (char *[]){
+				      [DIMENSION_SLICE_ID_IDX] = "dimension_slice_pkey",
+				      [DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX] =
+					  "dimension_slice_dimension_id_range_start_"
+					  "range_end_key",
+				  } },
+	[CHUNK] = { .length = _MAX_CHUNK_INDEX,
+		    .names =
+			(char *[]){
+			    [CHUNK_ID_INDEX] = "chunk_pkey",
+			    [CHUNK_HYPERTABLE_ID_INDEX] = "chunk_hypertable_id_idx",
+			    [CHUNK_SCHEMA_NAME_INDEX] =
+				"chunk_schema_name_table_name_key",
+			} },
+	[CHUNK_CONSTRAINT] = { .length = _MAX_CHUNK_CONSTRAINT_INDEX,
+			       .names =
+				   (char *[]){
+				       [CHUNK_CONSTRAINT_CHUNK_ID_CONSTRAINT_NAME_IDX] =
+					   "chunk_constraint_chunk_id_constraint_name_"
+					   "key",
+				       [CHUNK_CONSTRAINT_CHUNK_ID_DIMENSION_SLICE_ID_IDX] =
+					   "chunk_constraint_chunk_id_dimension_slice_id_"
+					   "idx",
+				   } },
+	[CHUNK_INDEX] = { .length = _MAX_CHUNK_INDEX_INDEX,
+			  .names =
+			      (char *[]){
+				  [CHUNK_INDEX_CHUNK_ID_INDEX_NAME_IDX] =
+				      "chunk_index_chunk_id_index_name_key",
+				  [CHUNK_INDEX_HYPERTABLE_ID_HYPERTABLE_INDEX_NAME_IDX] =
+				      "chunk_index_hypertable_id_hypertable_index_name_"
+				      "idx",
+			      } },
+	[TABLESPACE] = { .length = _MAX_TABLESPACE_INDEX,
+			 .names =
+			     (char *[]){
+				 [TABLESPACE_PKEY_IDX] = "tablespace_pkey",
+				 [TABLESPACE_HYPERTABLE_ID_TABLESPACE_NAME_IDX] =
+				     "tablespace_hypertable_id_tablespace_name_key",
+			     } },
+	[BGW_JOB] = { .length = _MAX_BGW_JOB_INDEX,
+		      .names =
+			  (char *[]){
+			      [BGW_JOB_PKEY_IDX] = "bgw_job_pkey",
+			  } },
+	[BGW_JOB_STAT] = { .length = _MAX_BGW_JOB_STAT_INDEX,
+			   .names =
+			       (char *[]){
+				   [BGW_JOB_STAT_PKEY_IDX] = "bgw_job_stat_pkey",
+			       } },
+	[INSTALLATION_METADATA] = { .length = _MAX_INSTALLATION_METADATA_INDEX,
+				    .names =
+					(char *[]){
+					    [INSTALLATION_METADATA_PKEY_IDX] =
+						"installation_metadata_pkey",
+					} }
 };
 
 static const char *catalog_table_serial_id_names[_MAX_CATALOG_TABLES] = {
@@ -165,16 +169,15 @@ static const char *catalog_table_serial_id_names[_MAX_CATALOG_TABLES] = {
 
 typedef struct InternalFunctionDef
 {
-	char	   *name;
-	int			args;
+	char *name;
+	int   args;
 } InternalFunctionDef;
 
-const static InternalFunctionDef internal_function_definitions[_MAX_INTERNAL_FUNCTIONS] = {
-	[DDL_ADD_CHUNK_CONSTRAINT] = {
-		.name = "chunk_constraint_add_table_constraint",
-		.args = 1,
-	}
-};
+const static InternalFunctionDef internal_function_definitions
+    [_MAX_INTERNAL_FUNCTIONS] = { [DDL_ADD_CHUNK_CONSTRAINT] = {
+				      .name = "chunk_constraint_add_table_constraint",
+				      .args = 1,
+				  } };
 
 /* Names for proxy tables used for cache invalidation. Must match names in
  * sql/cache.sql */
@@ -200,16 +203,16 @@ catalog_is_valid(Catalog *catalog)
 static Oid
 catalog_owner(void)
 {
-	HeapTuple	tuple;
-	Oid			owner_oid;
-	Oid			nsp_oid = get_namespace_oid(CATALOG_SCHEMA_NAME, false);
+	HeapTuple tuple;
+	Oid       owner_oid;
+	Oid       nsp_oid = get_namespace_oid(CATALOG_SCHEMA_NAME, false);
 
 	tuple = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(nsp_oid));
 
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_SCHEMA),
-				 errmsg("schema with OID %u does not exist", nsp_oid)));
+			(errcode(ERRCODE_UNDEFINED_SCHEMA),
+			 errmsg("schema with OID %u does not exist", nsp_oid)));
 
 	owner_oid = ((Form_pg_namespace) GETSTRUCT(tuple))->nspowner;
 
@@ -221,7 +224,7 @@ catalog_owner(void)
 Catalog *
 catalog_get(void)
 {
-	int			i;
+	int i;
 
 	if (!OidIsValid(MyDatabaseId))
 		elog(ERROR, "invalid database ID");
@@ -243,17 +246,19 @@ catalog_get(void)
 
 	for (i = 0; i < _MAX_CATALOG_TABLES; i++)
 	{
-		Oid			schema_oid;
-		Oid			id;
+		Oid	 schema_oid;
+		Oid	 id;
 		const char *sequence_name;
-		Size		number_indexes,
-					j;
+		Size	number_indexes, j;
 
 		schema_oid = get_namespace_oid(catalog_table_names[i].schema_name, false);
 		id = get_relname_relid(catalog_table_name(i), schema_oid);
 
 		if (id == InvalidOid)
-			elog(ERROR, "OID lookup failed for table \"%s.%s\"", catalog_table_names[i].schema_name, catalog_table_name(i));
+			elog(ERROR,
+			     "OID lookup failed for table \"%s.%s\"",
+			     catalog_table_names[i].schema_name,
+			     catalog_table_name(i));
 
 		catalog.tables[i].id = id;
 
@@ -262,12 +267,13 @@ catalog_get(void)
 
 		for (j = 0; j < number_indexes; j++)
 		{
-			id = get_relname_relid(catalog_table_index_definitions[i].names[j],
-								   schema_oid);
+			id = get_relname_relid(
+			    catalog_table_index_definitions[i].names[j], schema_oid);
 
 			if (id == InvalidOid)
-				elog(ERROR, "OID lookup failed for table index \"%s\"",
-					 catalog_table_index_definitions[i].names[j]);
+				elog(ERROR,
+				     "OID lookup failed for table index \"%s\"",
+				     catalog_table_index_definitions[i].names[j]);
 
 			catalog.tables[i].index_ids[j] = id;
 		}
@@ -278,10 +284,12 @@ catalog_get(void)
 
 		if (NULL != sequence_name)
 		{
-			RangeVar   *sequence;
+			RangeVar *sequence;
 
-			sequence = makeRangeVarFromNameList(stringToQualifiedNameList(sequence_name));
-			catalog.tables[i].serial_relid = RangeVarGetRelid(sequence, NoLock, false);
+			sequence = makeRangeVarFromNameList(
+			    stringToQualifiedNameList(sequence_name));
+			catalog.tables[i].serial_relid =
+			    RangeVarGetRelid(sequence, NoLock, false);
 		}
 		else
 			catalog.tables[i].serial_relid = InvalidOid;
@@ -290,25 +298,30 @@ catalog_get(void)
 	catalog.cache_schema_id = get_namespace_oid(CACHE_SCHEMA_NAME, false);
 
 	for (i = 0; i < _MAX_CACHE_TYPES; i++)
-		catalog.caches[i].inval_proxy_id = get_relname_relid(cache_proxy_table_names[i],
-															 catalog.cache_schema_id);
+		catalog.caches[i].inval_proxy_id = get_relname_relid(
+		    cache_proxy_table_names[i], catalog.cache_schema_id);
 
 	catalog.internal_schema_id = get_namespace_oid(INTERNAL_SCHEMA_NAME, false);
 
 	for (i = 0; i < _MAX_INTERNAL_FUNCTIONS; i++)
 	{
 		InternalFunctionDef def = internal_function_definitions[i];
-		FuncCandidateList funclist =
-		FuncnameGetCandidates(list_make2(makeString(INTERNAL_SCHEMA_NAME),
-										 makeString(def.name)),
-							  def.args, NULL, false, false, false);
+		FuncCandidateList   funclist = FuncnameGetCandidates(
+		      list_make2(makeString(INTERNAL_SCHEMA_NAME), makeString(def.name)),
+		      def.args,
+		      NULL,
+		      false,
+		      false,
+		      false);
 
 		if (funclist == NULL || funclist->next)
-			elog(ERROR, "OID lookup failed for the function \"%s\" with %d args", def.name, def.args);
+			elog(ERROR,
+			     "OID lookup failed for the function \"%s\" with %d args",
+			     def.name,
+			     def.args);
 
 		catalog.functions[i].function_id = funclist->oid;
 	}
-
 
 	return &catalog;
 }
@@ -324,7 +337,7 @@ catalog_get_cache_proxy_id(Catalog *catalog, CacheType type)
 {
 	if (!catalog_is_valid(catalog))
 	{
-		Oid			schema;
+		Oid schema;
 
 		/*
 		 * The catalog can be invalid during upgrade scripts. Try a non-cached
@@ -369,7 +382,8 @@ catalog_become_owner(Catalog *catalog, CatalogSecurityContext *sec_ctx)
 	if (sec_ctx->saved_uid != catalog->owner_uid)
 	{
 		SetUserIdAndSecContext(catalog->owner_uid,
-							   sec_ctx->saved_security_context | SECURITY_LOCAL_USERID_CHANGE);
+				       sec_ctx->saved_security_context |
+					   SECURITY_LOCAL_USERID_CHANGE);
 		return true;
 	}
 
@@ -404,8 +418,9 @@ catalog_table_get(Catalog *catalog, Oid relid)
 		const char *relname = get_rel_name(relid);
 
 		for (i = 0; i < _MAX_CATALOG_TABLES; i++)
-			if (strcmp(catalog_table_names[i].schema_name, schema_name) == 0
-				&& strcmp(catalog_table_name(i), relname) == 0)
+			if (strcmp(catalog_table_names[i].schema_name, schema_name) ==
+				0 &&
+			    strcmp(catalog_table_name(i), relname) == 0)
 				return (CatalogTable) i;
 
 		return INVALID_CATALOG_TABLE;
@@ -430,31 +445,35 @@ catalog_table_name(CatalogTable table)
 int64
 catalog_table_next_seq_id(Catalog *catalog, CatalogTable table)
 {
-	Oid			relid = catalog->tables[table].serial_relid;
+	Oid relid = catalog->tables[table].serial_relid;
 
 	if (!OidIsValid(relid))
-		elog(ERROR, "no serial ID column for table \"%s.%s\"", catalog_table_names[table].schema_name, catalog_table_name(table));
+		elog(ERROR,
+		     "no serial ID column for table \"%s.%s\"",
+		     catalog_table_names[table].schema_name,
+		     catalog_table_name(table));
 
 	return DatumGetInt64(DirectFunctionCall1(nextval_oid, ObjectIdGetDatum(relid)));
 }
 
 #if PG96
-#define CatalogTupleInsert(relation, tuple)		\
-	do {										\
-		simple_heap_insert(relation, tuple);	\
-		CatalogUpdateIndexes(relation, tuple);	\
+#define CatalogTupleInsert(relation, tuple)                                              \
+	do                                                                               \
+	{                                                                                \
+		simple_heap_insert(relation, tuple);                                     \
+		CatalogUpdateIndexes(relation, tuple);                                   \
 	} while (0);
 
-#define CatalogTupleUpdate(relation, tid, tuple)	\
-	do {											\
-		simple_heap_update(relation, tid, tuple);	\
-		CatalogUpdateIndexes(relation, tuple);		\
+#define CatalogTupleUpdate(relation, tid, tuple)                                         \
+	do                                                                               \
+	{                                                                                \
+		simple_heap_update(relation, tid, tuple);                                \
+		CatalogUpdateIndexes(relation, tuple);                                   \
 	} while (0);
 
-#define CatalogTupleDelete(relation, tid)		\
-	simple_heap_delete(relation, tid);
+#define CatalogTupleDelete(relation, tid) simple_heap_delete(relation, tid);
 
-#endif							/* PG96 */
+#endif /* PG96 */
 
 /*
  * Insert a new row into a catalog table.
@@ -474,7 +493,7 @@ catalog_insert(Relation rel, HeapTuple tuple)
 void
 catalog_insert_values(Relation rel, TupleDesc tupdesc, Datum *values, bool *nulls)
 {
-	HeapTuple	tuple = heap_form_tuple(tupdesc, values, nulls);
+	HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
 
 	catalog_insert(rel, tuple);
 	heap_freetuple(tuple);
@@ -540,28 +559,29 @@ catalog_delete_only(Relation rel, HeapTuple tuple)
 void
 catalog_invalidate_cache(Oid catalog_relid, CmdType operation)
 {
-	Catalog    *catalog = catalog_get();
+	Catalog *    catalog = catalog_get();
 	CatalogTable table = catalog_table_get(catalog, catalog_relid);
-	Oid			relid;
+	Oid	  relid;
 
 	switch (table)
 	{
-		case CHUNK:
-		case CHUNK_CONSTRAINT:
-		case DIMENSION_SLICE:
-			if (operation == CMD_UPDATE || operation == CMD_DELETE)
-			{
-				relid = catalog_get_cache_proxy_id(catalog, CACHE_TYPE_HYPERTABLE);
-				CacheInvalidateRelcacheByRelid(relid);
-			}
-			break;
-		case HYPERTABLE:
-		case DIMENSION:
-			relid = catalog_get_cache_proxy_id(catalog, CACHE_TYPE_HYPERTABLE);
+	case CHUNK:
+	case CHUNK_CONSTRAINT:
+	case DIMENSION_SLICE:
+		if (operation == CMD_UPDATE || operation == CMD_DELETE)
+		{
+			relid =
+			    catalog_get_cache_proxy_id(catalog, CACHE_TYPE_HYPERTABLE);
 			CacheInvalidateRelcacheByRelid(relid);
-			break;
-		case CHUNK_INDEX:
-		default:
-			break;
+		}
+		break;
+	case HYPERTABLE:
+	case DIMENSION:
+		relid = catalog_get_cache_proxy_id(catalog, CACHE_TYPE_HYPERTABLE);
+		CacheInvalidateRelcacheByRelid(relid);
+		break;
+	case CHUNK_INDEX:
+	default:
+		break;
 	}
 }

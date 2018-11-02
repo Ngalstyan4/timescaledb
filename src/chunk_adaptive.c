@@ -39,17 +39,17 @@ static int64
 convert_text_memory_amount_to_bytes(const char *memory_amount)
 {
 	const char *hintmsg;
-	int			nblocks;
-	int64		bytes;
+	int	 nblocks;
+	int64       bytes;
 
 	if (NULL == memory_amount)
 		elog(ERROR, "invalid memory amount");
 
 	if (!parse_int(memory_amount, &nblocks, GUC_UNIT_BLOCKS, &hintmsg))
 		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid data amount"),
-				 errhint("%s", hintmsg)));
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("invalid data amount"),
+			 errhint("%s", hintmsg)));
 
 	bytes = nblocks;
 	bytes *= BLCKSZ;
@@ -63,8 +63,7 @@ convert_text_memory_amount_to_bytes(const char *memory_amount)
  */
 TS_FUNCTION_INFO_V1(ts_set_memory_cache_size);
 
-Datum
-ts_set_memory_cache_size(PG_FUNCTION_ARGS)
+Datum ts_set_memory_cache_size(PG_FUNCTION_ARGS)
 {
 	const char *memory_amount = text_to_cstring(PG_GETARG_TEXT_P(0));
 
@@ -83,8 +82,8 @@ get_memory_cache_size(void)
 {
 	const char *val;
 	const char *hintmsg;
-	int			shared_buffers;
-	int64		memory_bytes;
+	int	 shared_buffers;
+	int64       memory_bytes;
 
 	if (fixed_memory_cache_size > 0)
 		return fixed_memory_cache_size;
@@ -115,11 +114,10 @@ get_memory_cache_size(void)
 static inline int64
 calculate_initial_chunk_target_size(void)
 {
-	return (int64) ((double) get_memory_cache_size() * DEFAULT_CACHE_MEMORY_SLACK);
+	return (int64)((double) get_memory_cache_size() * DEFAULT_CACHE_MEMORY_SLACK);
 }
 
-typedef enum MinMaxResult
-{
+typedef enum MinMaxResult {
 	MINMAX_NO_INDEX,
 	MINMAX_NO_TUPLES,
 	MINMAX_FOUND,
@@ -133,10 +131,10 @@ typedef enum MinMaxResult
 static MinMaxResult
 minmax_heapscan(Relation rel, Oid atttype, AttrNumber attnum, Datum minmax[2])
 {
-	HeapScanDesc scan;
-	HeapTuple	tuple;
+	HeapScanDesc    scan;
+	HeapTuple       tuple;
 	TypeCacheEntry *tce;
-	bool		nulls[2] = {true, true};
+	bool		nulls[2] = { true, true };
 
 	/* Lookup the tuple comparison function from the type cache */
 	tce = lookup_type_cache(atttype, TYPECACHE_CMP_PROC | TYPECACHE_CMP_PROC_FINFO);
@@ -148,21 +146,23 @@ minmax_heapscan(Relation rel, Oid atttype, AttrNumber attnum, Datum minmax[2])
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
-		bool		isnull;
-		Datum		value = heap_getattr(tuple, attnum, RelationGetDescr(rel), &isnull);
+		bool  isnull;
+		Datum value = heap_getattr(tuple, attnum, RelationGetDescr(rel), &isnull);
 
 		if (isnull)
 			continue;
 
 		/* Check for new min */
-		if (nulls[0] || DatumGetInt32(FunctionCall2(&tce->cmp_proc_finfo, value, minmax[0])) < 0)
+		if (nulls[0] || DatumGetInt32(FunctionCall2(
+				    &tce->cmp_proc_finfo, value, minmax[0])) < 0)
 		{
 			nulls[0] = false;
 			minmax[0] = value;
 		}
 
 		/* Check for new max */
-		if (nulls[1] || DatumGetInt32(FunctionCall2(&tce->cmp_proc_finfo, value, minmax[1])) > 0)
+		if (nulls[1] || DatumGetInt32(FunctionCall2(
+				    &tce->cmp_proc_finfo, value, minmax[1])) > 0)
 		{
 			nulls[1] = false;
 			minmax[1] = value;
@@ -181,10 +181,10 @@ static MinMaxResult
 minmax_indexscan(Relation rel, Relation idxrel, AttrNumber attnum, Datum minmax[2])
 {
 	IndexScanDesc scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 0, 0);
-	HeapTuple	tuple;
-	bool		isnull;
-	bool		nulls[2] = {true, true};
-	int			n = 0;
+	HeapTuple     tuple;
+	bool	  isnull;
+	bool	  nulls[2] = { true, true };
+	int	   n = 0;
 
 	tuple = index_getnext(scan, BackwardScanDirection);
 
@@ -212,23 +212,22 @@ minmax_indexscan(Relation rel, Relation idxrel, AttrNumber attnum, Datum minmax[
  * Do a scan for min and max using and index on the given column.
  */
 static MinMaxResult
-relation_minmax_indexscan(Relation rel,
-						  Oid atttype,
-						  Name attname,
-						  AttrNumber attnum,
-						  Datum minmax[2])
+relation_minmax_indexscan(Relation rel, Oid atttype, Name attname, AttrNumber attnum,
+			  Datum minmax[2])
 {
-	List	   *indexlist = RelationGetIndexList(rel);
-	ListCell   *lc;
+	List *       indexlist = RelationGetIndexList(rel);
+	ListCell *   lc;
 	MinMaxResult res = MINMAX_NO_INDEX;
 
-	foreach(lc, indexlist)
+	foreach (lc, indexlist)
 	{
-		Relation	idxrel;
+		Relation idxrel;
 
 		idxrel = index_open(lfirst_oid(lc), AccessShareLock);
 
-		if (idxrel->rd_att->attrs[0]->atttypid == atttype && namestrcmp(&idxrel->rd_att->attrs[0]->attname, NameStr(*attname)) == 0)
+		if (idxrel->rd_att->attrs[0]->atttypid == atttype &&
+		    namestrcmp(&idxrel->rd_att->attrs[0]->attname, NameStr(*attname)) ==
+			0)
 			res = minmax_indexscan(rel, idxrel, attnum, minmax);
 
 		index_close(idxrel, AccessShareLock);
@@ -248,9 +247,10 @@ relation_minmax_indexscan(Relation rel,
 static bool
 table_has_minmax_index(Oid relid, Oid atttype, Name attname, AttrNumber attnum)
 {
-	Datum		minmax[2];
-	Relation	rel = heap_open(relid, AccessShareLock);
-	MinMaxResult res = relation_minmax_indexscan(rel, atttype, attname, attnum, minmax);
+	Datum	minmax[2];
+	Relation     rel = heap_open(relid, AccessShareLock);
+	MinMaxResult res =
+	    relation_minmax_indexscan(rel, atttype, attname, attnum, minmax);
 
 	heap_close(rel, AccessShareLock);
 
@@ -265,8 +265,8 @@ table_has_minmax_index(Oid relid, Oid atttype, Name attname, AttrNumber attnum)
 static bool
 chunk_get_minmax(Oid relid, Oid atttype, AttrNumber attnum, Datum minmax[2])
 {
-	Relation	rel = heap_open(relid, AccessShareLock);
-	NameData	attname;
+	Relation     rel = heap_open(relid, AccessShareLock);
+	NameData     attname;
 	MinMaxResult res;
 
 	namestrcpy(&attname, get_attname(relid, attnum));
@@ -274,10 +274,14 @@ chunk_get_minmax(Oid relid, Oid atttype, AttrNumber attnum, Datum minmax[2])
 
 	if (res == MINMAX_NO_INDEX)
 	{
-		ereport(WARNING,
-				(errmsg("no index on \"%s\" found for adaptive chunking on chunk \"%s\"",
-						NameStr(attname), get_rel_name(relid)),
-				 errdetail("Adaptive chunking works best with an index on the dimension being adapted.")));
+		ereport(
+		    WARNING,
+		    (errmsg(
+			 "no index on \"%s\" found for adaptive chunking on chunk \"%s\"",
+			 NameStr(attname),
+			 get_rel_name(relid)),
+		     errdetail("Adaptive chunking works best with an index on the "
+			       "dimension being adapted.")));
 
 		res = minmax_heapscan(rel, atttype, attnum, minmax);
 	}
@@ -400,36 +404,38 @@ TS_FUNCTION_INFO_V1(ts_calculate_chunk_interval);
  * This will then allow the algorithm to work in the normal way to adjust
  * further if needed.
  */
-Datum
-ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
+Datum ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 {
-	int32		dimension_id = PG_GETARG_INT32(0);
-	int64		dimension_coord = PG_GETARG_INT64(1);
-	int64		chunk_target_size_bytes = PG_GETARG_INT64(2);
-	int64		chunk_interval = 0;
-	int64		undersized_intervals = 0;
-	int64		current_interval;
-	int32		hypertable_id;
+	int32       dimension_id = PG_GETARG_INT32(0);
+	int64       dimension_coord = PG_GETARG_INT64(1);
+	int64       chunk_target_size_bytes = PG_GETARG_INT64(2);
+	int64       chunk_interval = 0;
+	int64       undersized_intervals = 0;
+	int64       current_interval;
+	int32       hypertable_id;
 	Hypertable *ht;
-	Dimension  *dim;
-	List	   *chunks = NIL;
-	ListCell   *lc;
-	int			num_intervals = 0;
-	int			num_undersized_intervals = 0;
-	double		interval_diff;
-	double		undersized_fillfactor = 0.0;
+	Dimension * dim;
+	List *      chunks = NIL;
+	ListCell *  lc;
+	int	 num_intervals = 0;
+	int	 num_undersized_intervals = 0;
+	double      interval_diff;
+	double      undersized_fillfactor = 0.0;
 
 	if (PG_NARGS() != CHUNK_SIZING_FUNC_NARGS)
 		elog(ERROR, "invalid number of arguments");
 
 	Assert(chunk_target_size_bytes >= 0);
-	elog(DEBUG1, "[adaptive] chunk_target_size_bytes=" UINT64_FORMAT,
-		 chunk_target_size_bytes);
+	elog(DEBUG1,
+	     "[adaptive] chunk_target_size_bytes=" UINT64_FORMAT,
+	     chunk_target_size_bytes);
 
 	hypertable_id = dimension_get_hypertable_id(dimension_id);
 
 	if (hypertable_id <= 0)
-		elog(ERROR, "could not find a matching hypertable for dimension %u", dimension_id);
+		elog(ERROR,
+		     "could not find a matching hypertable for dimension %u",
+		     dimension_id);
 
 	ht = hypertable_get_by_id(hypertable_id);
 
@@ -442,35 +448,34 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 	current_interval = dim->fd.interval_length;
 
 	/* Get a window of recent chunks */
-	chunks = chunk_get_window(dimension_id,
-							  dimension_coord,
-							  DEFAULT_CHUNK_WINDOW,
-							  CurrentMemoryContext);
+	chunks = chunk_get_window(
+	    dimension_id, dimension_coord, DEFAULT_CHUNK_WINDOW, CurrentMemoryContext);
 
-	foreach(lc, chunks)
+	foreach (lc, chunks)
 	{
-		Chunk	   *chunk = lfirst(lc);
-		DimensionSlice *slice = hypercube_get_slice_by_dimension_id(chunk->cube, dimension_id);
-		int64		chunk_size,
-					slice_interval;
-		Datum		minmax[2];
-		AttrNumber	attno = chunk_get_attno(ht->main_table_relid, chunk->table_id, dim->column_attno);
+		Chunk *		chunk = lfirst(lc);
+		DimensionSlice *slice =
+		    hypercube_get_slice_by_dimension_id(chunk->cube, dimension_id);
+		int64      chunk_size, slice_interval;
+		Datum      minmax[2];
+		AttrNumber attno = chunk_get_attno(
+		    ht->main_table_relid, chunk->table_id, dim->column_attno);
 
 		Assert(NULL != slice);
 
-		chunk_size = DatumGetInt64(DirectFunctionCall1(pg_total_relation_size,
-													   ObjectIdGetDatum(chunk->table_id)));
+		chunk_size = DatumGetInt64(DirectFunctionCall1(
+		    pg_total_relation_size, ObjectIdGetDatum(chunk->table_id)));
 
 		slice_interval = slice->fd.range_end - slice->fd.range_start;
 
-
 		if (chunk_get_minmax(chunk->table_id, dim->fd.column_type, attno, minmax))
 		{
-			int64		min = time_value_to_internal(minmax[0], dim->fd.column_type, false);
-			int64		max = time_value_to_internal(minmax[1], dim->fd.column_type, false);
-			double		interval_fillfactor,
-						size_fillfactor;
-			int64		extrapolated_chunk_size;
+			int64 min =
+			    time_value_to_internal(minmax[0], dim->fd.column_type, false);
+			int64 max =
+			    time_value_to_internal(minmax[1], dim->fd.column_type, false);
+			double interval_fillfactor, size_fillfactor;
+			int64  extrapolated_chunk_size;
 
 			/*
 			 * The fillfactor of the slice interval that the data actually
@@ -483,19 +488,20 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 			 * entire interval
 			 */
 			extrapolated_chunk_size = chunk_size / interval_fillfactor;
-			size_fillfactor = ((double) extrapolated_chunk_size) / chunk_target_size_bytes;
+			size_fillfactor =
+			    ((double) extrapolated_chunk_size) / chunk_target_size_bytes;
 
-			elog(DEBUG2, "[adaptive] slice_interval=" UINT64_FORMAT
-				 " interval_fillfactor=%lf"
-				 " current_chunk_size=" UINT64_FORMAT
-				 " extrapolated_chunk_size=" UINT64_FORMAT
-				 " size_fillfactor=%lf",
-				 slice_interval,
-				 interval_fillfactor,
-				 chunk_size,
-				 extrapolated_chunk_size,
-				 size_fillfactor);
-
+			elog(DEBUG2,
+			     "[adaptive] slice_interval=" UINT64_FORMAT
+			     " interval_fillfactor=%lf"
+			     " current_chunk_size=" UINT64_FORMAT
+			     " extrapolated_chunk_size=" UINT64_FORMAT
+			     " size_fillfactor=%lf",
+			     slice_interval,
+			     interval_fillfactor,
+			     chunk_size,
+			     extrapolated_chunk_size,
+			     size_fillfactor);
 
 			/*
 			 * If the chunk is sufficiently filled with data and its
@@ -503,7 +509,7 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 			 * it
 			 */
 			if (interval_fillfactor > INTERVAL_FILLFACTOR_THRESH &&
-				size_fillfactor > SIZE_FILLFACTOR_THRESH)
+			    size_fillfactor > SIZE_FILLFACTOR_THRESH)
 			{
 				chunk_interval += (slice_interval / size_fillfactor);
 				num_intervals++;
@@ -516,8 +522,9 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 			 */
 			else if (interval_fillfactor > INTERVAL_FILLFACTOR_THRESH)
 			{
-				elog(DEBUG2, "[adaptive] chunk sufficiently full, "
-					 "but undersized. may use for prediction.");
+				elog(DEBUG2,
+				     "[adaptive] chunk sufficiently full, "
+				     "but undersized. may use for prediction.");
 				undersized_intervals += slice_interval;
 				undersized_fillfactor += size_fillfactor;
 				num_undersized_intervals++;
@@ -525,11 +532,12 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 		}
 	}
 
-	elog(DEBUG1, "[adaptive] current interval=" UINT64_FORMAT
-		 " num_intervals=%d num_undersized_intervals=%d",
-		 current_interval,
-		 num_intervals,
-		 num_undersized_intervals);
+	elog(DEBUG1,
+	     "[adaptive] current interval=" UINT64_FORMAT
+	     " num_intervals=%d num_undersized_intervals=%d",
+	     current_interval,
+	     num_intervals,
+	     num_undersized_intervals);
 
 	/*
 	 * No full sized intervals, but enough undersized intervals to adjust
@@ -539,22 +547,25 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 	 */
 	if (num_intervals == 0 && num_undersized_intervals > NUM_UNDERSIZED_INTERVALS)
 	{
-		double		avg_fillfactor = undersized_fillfactor / num_undersized_intervals;
-		double		incr_factor = UNDERSIZED_FILLFACTOR_THRESH / avg_fillfactor;
-		int64		avg_interval = undersized_intervals / num_undersized_intervals;
+		double avg_fillfactor = undersized_fillfactor / num_undersized_intervals;
+		double incr_factor = UNDERSIZED_FILLFACTOR_THRESH / avg_fillfactor;
+		int64  avg_interval = undersized_intervals / num_undersized_intervals;
 
-		elog(DEBUG1, "[adaptive] no sufficiently large intervals found, but "
-			 "some undersized ones found. increase interval to probe for better"
-			 " threshold. factor=%lf", incr_factor);
-		chunk_interval = (int64) (avg_interval * incr_factor);
+		elog(DEBUG1,
+		     "[adaptive] no sufficiently large intervals found, but "
+		     "some undersized ones found. increase interval to probe for better"
+		     " threshold. factor=%lf",
+		     incr_factor);
+		chunk_interval = (int64)(avg_interval * incr_factor);
 	}
 	/* No data & insufficient amount of undersized chunks, keep old interval */
 	else if (num_intervals == 0)
 	{
-		elog(DEBUG1, "[adaptive] no sufficiently large intervals found, "
-			 "nor enough undersized chunks to estimate. "
-			 "use previous size of " UINT64_FORMAT,
-			 current_interval);
+		elog(DEBUG1,
+		     "[adaptive] no sufficiently large intervals found, "
+		     "nor enough undersized chunks to estimate. "
+		     "use previous size of " UINT64_FORMAT,
+		     current_interval);
 		PG_RETURN_INT64(current_interval);
 	}
 	else
@@ -569,16 +580,19 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 
 	if (interval_diff <= INTERVAL_MIN_CHANGE_THRESH)
 	{
-		elog(DEBUG1, "[adaptive] calculated chunk interval=" UINT64_FORMAT
-			 ", but is below change threshold, keeping old interval",
-			 chunk_interval);
+		elog(DEBUG1,
+		     "[adaptive] calculated chunk interval=" UINT64_FORMAT
+		     ", but is below change threshold, keeping old interval",
+		     chunk_interval);
 		chunk_interval = current_interval;
 	}
 	else
 	{
-		elog(LOG, "[adaptive] calculated chunk interval=" UINT64_FORMAT
-			 " for hypertable %d, making change",
-			 chunk_interval, hypertable_id);
+		elog(LOG,
+		     "[adaptive] calculated chunk interval=" UINT64_FORMAT
+		     " for hypertable %d, making change",
+		     chunk_interval,
+		     hypertable_id);
 	}
 
 	PG_RETURN_INT64(chunk_interval);
@@ -593,14 +607,14 @@ ts_calculate_chunk_interval(PG_FUNCTION_ARGS)
 static void
 chunk_sizing_func_validate(regproc func, ChunkSizingInfo *info)
 {
-	HeapTuple	tuple;
+	HeapTuple    tuple;
 	Form_pg_proc form;
-	Oid		   *typearr;
+	Oid *	typearr;
 
 	if (!OidIsValid(func))
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_FUNCTION),
-				 (errmsg("invalid chunk sizing function"))));
+			(errcode(ERRCODE_UNDEFINED_FUNCTION),
+			 (errmsg("invalid chunk sizing function"))));
 
 	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(func));
 
@@ -610,17 +624,15 @@ chunk_sizing_func_validate(regproc func, ChunkSizingInfo *info)
 	form = (Form_pg_proc) GETSTRUCT(tuple);
 	typearr = form->proargtypes.values;
 
-	if (form->pronargs != CHUNK_SIZING_FUNC_NARGS ||
-		typearr[0] != INT4OID ||
-		typearr[1] != INT8OID ||
-		typearr[2] != INT8OID ||
-		form->prorettype != INT8OID)
+	if (form->pronargs != CHUNK_SIZING_FUNC_NARGS || typearr[0] != INT4OID ||
+	    typearr[1] != INT8OID || typearr[2] != INT8OID || form->prorettype != INT8OID)
 	{
 		ReleaseSysCache(tuple);
 		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("invalid function signature"),
-				 errhint("A chunk sizing function's signature should be (int, bigint, bigint) -> bigint")));
+			(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+			 errmsg("invalid function signature"),
+			 errhint("A chunk sizing function's signature should be (int, "
+				 "bigint, bigint) -> bigint")));
 	}
 
 	if (NULL != info)
@@ -644,10 +656,10 @@ static int64
 chunk_target_size_in_bytes(const text *target_size_text)
 {
 	const char *target_size = text_to_cstring(target_size_text);
-	int64		target_size_bytes = 0;
+	int64       target_size_bytes = 0;
 
 	if (pg_strcasecmp(target_size, "off") == 0 ||
-		pg_strcasecmp(target_size, "disable") == 0)
+	    pg_strcasecmp(target_size, "disable") == 0)
 		return 0;
 
 	if (pg_strcasecmp(target_size, "estimate") == 0)
@@ -662,24 +674,24 @@ chunk_target_size_in_bytes(const text *target_size_text)
 	return target_size_bytes;
 }
 
-#define MB (1024*1024)
+#define MB (1024 * 1024)
 
 void
 chunk_adaptive_sizing_info_validate(ChunkSizingInfo *info)
 {
-	AttrNumber	attnum;
-	NameData	attname;
-	Oid			atttype;
+	AttrNumber attnum;
+	NameData   attname;
+	Oid	atttype;
 
 	if (!OidIsValid(info->table_relid))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_TABLE),
-				 errmsg("table does not exist")));
+		ereport(
+		    ERROR,
+		    (errcode(ERRCODE_UNDEFINED_TABLE), errmsg("table does not exist")));
 
 	if (NULL == info->colname)
 		ereport(ERROR,
-				(errcode(ERRCODE_TS_DIMENSION_NOT_EXIST),
-				 errmsg("no open dimension found for adaptive chunking")));
+			(errcode(ERRCODE_TS_DIMENSION_NOT_EXIST),
+			 errmsg("no open dimension found for adaptive chunking")));
 
 	attnum = get_attnum(info->table_relid, info->colname);
 	namestrcpy(&attname, info->colname);
@@ -687,9 +699,8 @@ chunk_adaptive_sizing_info_validate(ChunkSizingInfo *info)
 
 	if (!OidIsValid(atttype))
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("column \"%s\" does not exist",
-						info->colname)));
+			(errcode(ERRCODE_UNDEFINED_COLUMN),
+			 errmsg("column \"%s\" does not exist", info->colname)));
 
 	chunk_sizing_func_validate(info->func, info);
 
@@ -703,16 +714,19 @@ chunk_adaptive_sizing_info_validate(ChunkSizingInfo *info)
 		return;
 
 	/* Warn of small target sizes */
-	if (info->target_size_bytes > 0 &&
-		info->target_size_bytes < (10 * MB))
-		elog(WARNING, "target chunk size for adaptive chunking is less than 10 MB");
+	if (info->target_size_bytes > 0 && info->target_size_bytes < (10 * MB))
+		elog(WARNING,
+		     "target chunk size for adaptive chunking is less than 10 MB");
 
 	if (info->check_for_index &&
-		!table_has_minmax_index(info->table_relid, atttype, &attname, attnum))
+	    !table_has_minmax_index(info->table_relid, atttype, &attname, attnum))
 		ereport(WARNING,
-				(errmsg("no index on \"%s\" found for adaptive chunking on hypertable \"%s\"",
-						info->colname, get_rel_name(info->table_relid)),
-				 errdetail("Adaptive chunking works best with an index on the dimension being adapted.")));
+			(errmsg("no index on \"%s\" found for adaptive chunking on "
+				"hypertable \"%s\"",
+				info->colname,
+				get_rel_name(info->table_relid)),
+			 errdetail("Adaptive chunking works best with an index on the "
+				   "dimension being adapted.")));
 }
 
 TS_FUNCTION_INFO_V1(ts_chunk_adaptive_set);
@@ -720,8 +734,7 @@ TS_FUNCTION_INFO_V1(ts_chunk_adaptive_set);
 /*
  * Change the settings for adaptive chunking.
  */
-Datum
-ts_chunk_adaptive_set(PG_FUNCTION_ARGS)
+Datum ts_chunk_adaptive_set(PG_FUNCTION_ARGS)
 {
 	ChunkSizingInfo info = {
 		.table_relid = PG_GETARG_OID(0),
@@ -730,43 +743,45 @@ ts_chunk_adaptive_set(PG_FUNCTION_ARGS)
 		.colname = NULL,
 		.check_for_index = true,
 	};
-	Hypertable *ht;
-	Dimension  *dim;
-	Cache	   *hcache;
-	HeapTuple	tuple;
-	TupleDesc	tupdesc;
+	Hypertable *	   ht;
+	Dimension *	    dim;
+	Cache *		       hcache;
+	HeapTuple	      tuple;
+	TupleDesc	      tupdesc;
 	CatalogSecurityContext sec_ctx;
-	Datum		values[2];
-	bool		nulls[2] = {false, false};
+	Datum		       values[2];
+	bool		       nulls[2] = { false, false };
 
 	if (!OidIsValid(info.table_relid))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_TABLE),
-				 errmsg("table does not exist")));
+		ereport(
+		    ERROR,
+		    (errcode(ERRCODE_UNDEFINED_TABLE), errmsg("table does not exist")));
 
 	hcache = hypertable_cache_pin();
 	ht = hypertable_cache_get_entry(hcache, info.table_relid);
 
 	if (NULL == ht)
 		ereport(ERROR,
-				(errcode(ERRCODE_TS_HYPERTABLE_NOT_EXIST),
-				 errmsg("table \"%s\" is not a hypertable",
-						get_rel_name(info.table_relid))));
+			(errcode(ERRCODE_TS_HYPERTABLE_NOT_EXIST),
+			 errmsg("table \"%s\" is not a hypertable",
+				get_rel_name(info.table_relid))));
 
 	/* Get the first open dimension that we will adapt on */
 	dim = hyperspace_get_dimension(ht->space, DIMENSION_TYPE_OPEN, 0);
 
 	if (NULL == dim)
 		ereport(ERROR,
-				(errcode(ERRCODE_TS_DIMENSION_NOT_EXIST),
-				 errmsg("no open dimension found for adaptive chunking")));
+			(errcode(ERRCODE_TS_DIMENSION_NOT_EXIST),
+			 errmsg("no open dimension found for adaptive chunking")));
 
 	info.colname = NameStr(dim->fd.column_name);
 
 	chunk_adaptive_sizing_info_validate(&info);
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "function returning record called in context that cannot accept type record");
+		elog(ERROR,
+		     "function returning record called in context that cannot accept "
+		     "type record");
 
 	tupdesc = BlessTupleDesc(tupdesc);
 
@@ -782,8 +797,8 @@ ts_chunk_adaptive_set(PG_FUNCTION_ARGS)
 	}
 	else
 		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_FUNCTION),
-				 errmsg("invalid chunk sizing function")));
+			(errcode(ERRCODE_UNDEFINED_FUNCTION),
+			 errmsg("invalid chunk sizing function")));
 
 	values[1] = DatumGetInt64(info.target_size_bytes);
 

@@ -19,9 +19,9 @@ static void
 chunk_dispatch_begin(CustomScanState *node, EState *estate, int eflags)
 {
 	ChunkDispatchState *state = (ChunkDispatchState *) node;
-	Hypertable *ht;
-	Cache	   *hypertable_cache;
-	PlanState  *ps;
+	Hypertable *	ht;
+	Cache *		    hypertable_cache;
+	PlanState *	 ps;
 
 	hypertable_cache = hypertable_cache_pin();
 
@@ -42,22 +42,22 @@ static TupleTableSlot *
 chunk_dispatch_exec(CustomScanState *node)
 {
 	ChunkDispatchState *state = (ChunkDispatchState *) node;
-	TupleTableSlot *slot;
-	PlanState  *substate = linitial(node->custom_ps);
+	TupleTableSlot *    slot;
+	PlanState *	 substate = linitial(node->custom_ps);
 
 	/* Get the next tuple from the subplan state node */
 	slot = ExecProcNode(substate);
 
 	if (!TupIsNull(slot))
 	{
-		Point	   *point;
+		Point *		  point;
 		ChunkInsertState *cis;
-		ChunkDispatch *dispatch = state->dispatch;
-		Hypertable *ht = dispatch->hypertable;
-		HeapTuple	tuple;
-		TupleDesc	tupdesc = slot->tts_tupleDescriptor;
-		EState	   *estate = node->ss.ps.state;
-		MemoryContext old;
+		ChunkDispatch *   dispatch = state->dispatch;
+		Hypertable *      ht = dispatch->hypertable;
+		HeapTuple	 tuple;
+		TupleDesc	 tupdesc = slot->tts_tupleDescriptor;
+		EState *	  estate = node->ss.ps.state;
+		MemoryContext     old;
 
 		/* Switch to the executor's per-tuple memory context */
 		old = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -69,13 +69,13 @@ chunk_dispatch_exec(CustomScanState *node)
 
 		/* Save the main table's (hypertable's) ResultRelInfo */
 		if (NULL == dispatch->hypertable_result_rel_info)
-			dispatch->hypertable_result_rel_info = estate->es_result_relation_info;
+			dispatch->hypertable_result_rel_info =
+			    estate->es_result_relation_info;
 
 		/*
 		 * Copy over the index to use in the returning list.
 		 */
 		dispatch->returning_index = state->parent->mt_whichplan;
-
 
 		/* Find or create the insert state matching the point */
 		cis = chunk_dispatch_get_chunk_insert_state(dispatch, point);
@@ -92,7 +92,7 @@ chunk_dispatch_exec(CustomScanState *node)
 		/* slot for the "existing" tuple in ON CONFLICT UPDATE IS chunk schema */
 		if (cis->tup_conv_map != NULL && state->parent->mt_existing != NULL)
 		{
-			TupleDesc	chunk_desc = cis->tup_conv_map->outdesc;
+			TupleDesc chunk_desc = cis->tup_conv_map->outdesc;
 
 			ExecSetSlotDescriptor(state->parent->mt_existing, chunk_desc);
 		}
@@ -117,7 +117,7 @@ static void
 chunk_dispatch_end(CustomScanState *node)
 {
 	ChunkDispatchState *state = (ChunkDispatchState *) node;
-	PlanState  *substate = linitial(node->custom_ps);
+	PlanState *	 substate = linitial(node->custom_ps);
 
 	ExecEndNode(substate);
 	chunk_dispatch_destroy(state->dispatch);
@@ -127,7 +127,7 @@ chunk_dispatch_end(CustomScanState *node)
 static void
 chunk_dispatch_rescan(CustomScanState *node)
 {
-	PlanState  *substate = linitial(node->custom_ps);
+	PlanState *substate = linitial(node->custom_ps);
 
 	ExecReScan(substate);
 }
@@ -145,7 +145,8 @@ chunk_dispatch_state_create(ChunkDispatchInfo *info, Plan *subplan)
 {
 	ChunkDispatchState *state;
 
-	state = (ChunkDispatchState *) newNode(sizeof(ChunkDispatchState), T_CustomScanState);
+	state =
+	    (ChunkDispatchState *) newNode(sizeof(ChunkDispatchState), T_CustomScanState);
 	state->hypertable_relid = info->hypertable_relid;
 	state->subplan = subplan;
 	state->cscan_state.methods = &chunk_dispatch_state_methods;

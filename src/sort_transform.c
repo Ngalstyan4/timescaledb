@@ -19,7 +19,7 @@
  * to an ordering on time.
  */
 
-extern void sort_transform_optimization(PlannerInfo *root, RelOptInfo *rel);
+extern void  sort_transform_optimization(PlannerInfo *root, RelOptInfo *rel);
 static Expr *sort_transform_expr(Expr *orig_expr);
 
 static Expr *
@@ -30,7 +30,7 @@ transform_date_trunc(FuncExpr *func)
 	 *
 	 * proof: date_trunc(c, time1) > date_trunc(c,time2) iff time1 > time2
 	 */
-	Expr	   *second;
+	Expr *second;
 
 	if (list_length(func->args) != 2 || !IsA(linitial(func->args), Const))
 		return (Expr *) func;
@@ -51,7 +51,7 @@ transform_time_bucket(FuncExpr *func)
 	 * proof: time_bucket(const1, time1) > time_bucket(const1,time2) iff time1
 	 * > time2
 	 */
-	Expr	   *second;
+	Expr *second;
 
 	if (list_length(func->args) != 2 || !IsA(linitial(func->args), Const))
 		return (Expr *) func;
@@ -75,7 +75,7 @@ transform_timestamp_cast(FuncExpr *func)
 	 *
 	 */
 
-	Expr	   *first;
+	Expr *first;
 
 	if (list_length(func->args) != 1)
 		return (Expr *) func;
@@ -102,7 +102,7 @@ transform_timestamptz_cast(FuncExpr *func)
 	 *
 	 */
 
-	Expr	   *first;
+	Expr *first;
 
 	if (list_length(func->args) != 1)
 		return (Expr *) func;
@@ -114,7 +114,6 @@ transform_timestamptz_cast(FuncExpr *func)
 	return (Expr *) copyObject(first);
 }
 
-
 static inline Expr *
 transform_time_op_const_interval(OpExpr *op)
 {
@@ -125,19 +124,20 @@ transform_time_op_const_interval(OpExpr *op)
 	 */
 	if (list_length(op->args) == 2 && IsA(lsecond(op->args), Const))
 	{
-		Oid			left = exprType((Node *) linitial(op->args));
-		Oid			right = exprType((Node *) lsecond(op->args));
+		Oid left = exprType((Node *) linitial(op->args));
+		Oid right = exprType((Node *) lsecond(op->args));
 
 		if ((left == TIMESTAMPOID && right == INTERVALOID) ||
-			(left == TIMESTAMPTZOID && right == INTERVALOID) ||
-			(left == DATEOID && right == INTERVALOID))
+		    (left == TIMESTAMPTZOID && right == INTERVALOID) ||
+		    (left == DATEOID && right == INTERVALOID))
 		{
-			char	   *name = get_opname(op->opno);
+			char *name = get_opname(op->opno);
 
 			if (strncmp(name, "-", NAMEDATALEN) == 0 ||
-				strncmp(name, "+", NAMEDATALEN) == 0)
+			    strncmp(name, "+", NAMEDATALEN) == 0)
 			{
-				Expr	   *first = sort_transform_expr((Expr *) linitial(op->args));
+				Expr *first =
+				    sort_transform_expr((Expr *) linitial(op->args));
 
 				if (IsA(first, Var))
 					return copyObject(first);
@@ -159,61 +159,59 @@ transform_int_op_const(OpExpr *op)
 	 * reverses sort order, which we don't handle yet)
 	 */
 	if (list_length(op->args) == 2 &&
-		(IsA(lsecond(op->args), Const) ||IsA(linitial(op->args), Const)))
+	    (IsA(lsecond(op->args), Const) || IsA(linitial(op->args), Const)))
 	{
-		Oid			left = exprType((Node *) linitial(op->args));
-		Oid			right = exprType((Node *) lsecond(op->args));
+		Oid left = exprType((Node *) linitial(op->args));
+		Oid right = exprType((Node *) lsecond(op->args));
 
-		if (
-			(left == INT8OID && right == INT8OID) ||
-			(left == INT4OID && right == INT4OID) ||
-			(left == INT2OID && right == INT2OID)
-			)
+		if ((left == INT8OID && right == INT8OID) ||
+		    (left == INT4OID && right == INT4OID) ||
+		    (left == INT2OID && right == INT2OID))
 		{
-			char	   *name = get_opname(op->opno);
+			char *name = get_opname(op->opno);
 
 			if (name[1] == '\0')
 			{
 				switch (name[0])
 				{
-					case '-':
-					case '+':
-					case '*':
-						/* commutative cases */
-						if (IsA(linitial(op->args), Const))
-						{
-							Expr	   *nonconst = sort_transform_expr((Expr *) lsecond(op->args));
+				case '-':
+				case '+':
+				case '*':
+					/* commutative cases */
+					if (IsA(linitial(op->args), Const))
+					{
+						Expr *nonconst = sort_transform_expr(
+						    (Expr *) lsecond(op->args));
 
-							if (IsA(nonconst, Var))
-								return copyObject(nonconst);
-						}
-						else
-						{
-							Expr	   *nonconst = sort_transform_expr((Expr *) linitial(op->args));
+						if (IsA(nonconst, Var))
+							return copyObject(nonconst);
+					}
+					else
+					{
+						Expr *nonconst = sort_transform_expr(
+						    (Expr *) linitial(op->args));
 
-							if (IsA(nonconst, Var))
-								return copyObject(nonconst);
+						if (IsA(nonconst, Var))
+							return copyObject(nonconst);
+					}
+					break;
+				case '/':
+					/* only if second arg is const */
+					if (IsA(lsecond(op->args), Const))
+					{
+						Expr *nonconst = sort_transform_expr(
+						    (Expr *) linitial(op->args));
 
-						}
-						break;
-					case '/':
-						/* only if second arg is const */
-						if (IsA(lsecond(op->args), Const))
-						{
-							Expr	   *nonconst = sort_transform_expr((Expr *) linitial(op->args));
-
-							if (IsA(nonconst, Var))
-								return copyObject(nonconst);
-						}
-						break;
+						if (IsA(nonconst, Var))
+							return copyObject(nonconst);
+					}
+					break;
 				}
-
 			}
 		}
 	}
 	return (Expr *) op;
 }
-
 
 /* sort_transforms_expr returns a simplified sort expression in a form
  * more common for indexes. Must return same data type & collation too.
@@ -234,8 +232,8 @@ sort_transform_expr(Expr *orig_expr)
 {
 	if (IsA(orig_expr, FuncExpr))
 	{
-		FuncExpr   *func = (FuncExpr *) orig_expr;
-		char	   *func_name = get_func_name(func->funcid);
+		FuncExpr *func = (FuncExpr *) orig_expr;
+		char *    func_name = get_func_name(func->funcid);
 
 		if (strncmp(func_name, "date_trunc", NAMEDATALEN) == 0)
 			return transform_date_trunc(func);
@@ -248,16 +246,16 @@ sort_transform_expr(Expr *orig_expr)
 	}
 	if (IsA(orig_expr, OpExpr))
 	{
-		OpExpr	   *op = (OpExpr *) orig_expr;
-		Oid			type_first = exprType((Node *) linitial(op->args));
+		OpExpr *op = (OpExpr *) orig_expr;
+		Oid     type_first = exprType((Node *) linitial(op->args));
 
-		if (type_first == TIMESTAMPOID ||
-			type_first == TIMESTAMPTZOID ||
-			type_first == DATEOID)
+		if (type_first == TIMESTAMPOID || type_first == TIMESTAMPTZOID ||
+		    type_first == DATEOID)
 		{
 			return transform_time_op_const_interval(op);
 		}
-		if (type_first == INT2OID || type_first == INT4OID || type_first == INT8OID)
+		if (type_first == INT2OID || type_first == INT4OID ||
+		    type_first == INT8OID)
 		{
 			return transform_int_op_const(op);
 		}
@@ -266,36 +264,42 @@ sort_transform_expr(Expr *orig_expr)
 }
 
 /*	sort_transform_ec creates a new EquivalenceClass with transformed
- *	expressions if any of the members of the original EC can be transformed for the sort.
+ *	expressions if any of the members of the original EC can be transformed for the
+ *sort.
  */
 
 static EquivalenceClass *
 sort_transform_ec(PlannerInfo *root, EquivalenceClass *orig)
 {
-	ListCell   *lc_member;
+	ListCell *	lc_member;
 	EquivalenceClass *newec = NULL;
 
 	/* check all members, adding only tranformable members to new ec */
-	foreach(lc_member, orig->ec_members)
+	foreach (lc_member, orig->ec_members)
 	{
 		EquivalenceMember *ec_mem = (EquivalenceMember *) lfirst(lc_member);
-		Expr	   *transformed_expr = sort_transform_expr(ec_mem->em_expr);
+		Expr *transformed_expr = sort_transform_expr(ec_mem->em_expr);
 
 		if (transformed_expr != ec_mem->em_expr)
 		{
 			EquivalenceMember *em;
-			Oid			type_oid = exprType((Node *) transformed_expr);
-			List	   *opfamilies = list_copy(orig->ec_opfamilies);
+			Oid		   type_oid = exprType((Node *) transformed_expr);
+			List *		   opfamilies = list_copy(orig->ec_opfamilies);
 
 			/*
 			 * if the transform already exists for even one member, assume
 			 * exists for all
 			 */
 			EquivalenceClass *exist =
-			get_eclass_for_sort_expr(root, transformed_expr, ec_mem->em_nullable_relids,
-									 opfamilies, type_oid,
-									 orig->ec_collation, orig->ec_sortref,
-									 ec_mem->em_relids, false);
+			    get_eclass_for_sort_expr(root,
+						     transformed_expr,
+						     ec_mem->em_nullable_relids,
+						     opfamilies,
+						     type_oid,
+						     orig->ec_collation,
+						     orig->ec_sortref,
+						     ec_mem->em_relids,
+						     false);
 
 			if (exist != NULL)
 			{
@@ -362,37 +366,41 @@ sort_transform_optimization(PlannerInfo *root, RelOptInfo *rel)
 	 * to make this transparent to upper levels in the planner.
 	 *
 	 */
-	ListCell   *lc_pathkey;
-	List	   *transformed_query_pathkey = NIL;
-	bool		was_transformed = false;
+	ListCell *lc_pathkey;
+	List *    transformed_query_pathkey = NIL;
+	bool      was_transformed = false;
 
 	/* build transformed query pathkeys */
-	foreach(lc_pathkey, root->query_pathkeys)
+	foreach (lc_pathkey, root->query_pathkeys)
 	{
-		PathKey    *pk = lfirst(lc_pathkey);
+		PathKey *	 pk = lfirst(lc_pathkey);
 		EquivalenceClass *transformed = sort_transform_ec(root, pk->pk_eclass);
 
 		if (transformed != NULL)
 		{
-			PathKey    *newpk = make_canonical_pathkey(root,
-													   transformed, pk->pk_opfamily, pk->pk_strategy, pk->pk_nulls_first);
+			PathKey *newpk = make_canonical_pathkey(root,
+								transformed,
+								pk->pk_opfamily,
+								pk->pk_strategy,
+								pk->pk_nulls_first);
 
 			was_transformed = true;
-			transformed_query_pathkey = lappend(transformed_query_pathkey, newpk);
+			transformed_query_pathkey =
+			    lappend(transformed_query_pathkey, newpk);
 		}
 		else
 		{
-			transformed_query_pathkey = lappend(transformed_query_pathkey, pk);
-
+			transformed_query_pathkey =
+			    lappend(transformed_query_pathkey, pk);
 		}
 	}
 
 	if (was_transformed)
 	{
-		ListCell   *lc_plan;
+		ListCell *lc_plan;
 
 		/* search for indexes on transformed pathkeys */
-		List	   *orig_query_pathkeys = root->query_pathkeys;
+		List *orig_query_pathkeys = root->query_pathkeys;
 
 		root->query_pathkeys = transformed_query_pathkey;
 		create_index_paths(root, rel);
@@ -405,15 +413,15 @@ sort_transform_optimization(PlannerInfo *root, RelOptInfo *rel)
 		 * transformed_query_pathkey implements ordering of
 		 * orig_query_pathkeys.
 		 */
-		foreach(lc_plan, rel->pathlist)
+		foreach (lc_plan, rel->pathlist)
 		{
-			Path	   *path = lfirst(lc_plan);
+			Path *path = lfirst(lc_plan);
 
-			if (compare_pathkeys(path->pathkeys, transformed_query_pathkey) == PATHKEYS_EQUAL)
+			if (compare_pathkeys(path->pathkeys, transformed_query_pathkey) ==
+			    PATHKEYS_EQUAL)
 			{
 				path->pathkeys = orig_query_pathkeys;
 			}
 		}
 	}
-
 }

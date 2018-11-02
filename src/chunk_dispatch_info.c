@@ -4,10 +4,10 @@
 #include "chunk_dispatch_info.h"
 
 static void
-chunk_dispatch_info_copy(struct ExtensibleNode *newnode,
-						 const struct ExtensibleNode *oldnode)
+chunk_dispatch_info_copy(struct ExtensibleNode *      newnode,
+			 const struct ExtensibleNode *oldnode)
 {
-	ChunkDispatchInfo *newinfo = (ChunkDispatchInfo *) newnode;
+	ChunkDispatchInfo *      newinfo = (ChunkDispatchInfo *) newnode;
 	const ChunkDispatchInfo *oldinfo = (const ChunkDispatchInfo *) oldnode;
 
 	newinfo->hypertable_relid = oldinfo->hypertable_relid;
@@ -15,7 +15,7 @@ chunk_dispatch_info_copy(struct ExtensibleNode *newnode,
 
 static bool
 chunk_dispatch_info_equal(const struct ExtensibleNode *an,
-						  const struct ExtensibleNode *bn)
+			  const struct ExtensibleNode *bn)
 {
 	const ChunkDispatchInfo *a = (const ChunkDispatchInfo *) an;
 	const ChunkDispatchInfo *b = (const ChunkDispatchInfo *) bn;
@@ -24,8 +24,7 @@ chunk_dispatch_info_equal(const struct ExtensibleNode *an,
 }
 
 static void
-chunk_dispatch_info_out(struct StringInfoData *str,
-						const struct ExtensibleNode *node)
+chunk_dispatch_info_out(struct StringInfoData *str, const struct ExtensibleNode *node)
 {
 	const ChunkDispatchInfo *info = (const ChunkDispatchInfo *) node;
 
@@ -36,8 +35,8 @@ static void
 chunk_dispatch_info_read(struct ExtensibleNode *node)
 {
 	ChunkDispatchInfo *info = (ChunkDispatchInfo *) node;
-	int			length;
-	char	   *token;
+	int		   length;
+	char *		   token;
 
 	/* Skip :hypertableOid */
 	token = pg_strtok(&length);
@@ -69,8 +68,8 @@ static ExtensibleNodeMethods chunk_dispatch_info_methods = {
 ChunkDispatchInfo *
 chunk_dispatch_info_create(Oid hypertable_relid, Query *parse)
 {
-	ChunkDispatchInfo *info = (ChunkDispatchInfo *) newNode(sizeof(ChunkDispatchInfo),
-															T_ExtensibleNode);
+	ChunkDispatchInfo *info =
+	    (ChunkDispatchInfo *) newNode(sizeof(ChunkDispatchInfo), T_ExtensibleNode);
 
 	info->enode.extnodename = chunk_dispatch_info_methods.extnodename;
 	info->hypertable_relid = hypertable_relid;

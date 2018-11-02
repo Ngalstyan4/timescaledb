@@ -22,7 +22,8 @@ chunk_dispatch_create(Hypertable *ht, EState *estate)
 	cd->on_conflict = ONCONFLICT_NONE;
 	cd->arbiter_indexes = NIL;
 	cd->cmd_type = CMD_INSERT;
-	cd->cache = subspace_store_init(ht->space, estate->es_query_cxt, guc_max_open_chunks_per_insert);
+	cd->cache = subspace_store_init(
+	    ht->space, estate->es_query_cxt, guc_max_open_chunks_per_insert);
 
 	return cd;
 }
@@ -52,7 +53,7 @@ chunk_dispatch_get_chunk_insert_state(ChunkDispatch *dispatch, Point *point)
 
 	if (NULL == cis)
 	{
-		Chunk	   *new_chunk;
+		Chunk *new_chunk;
 
 		new_chunk = hypertable_get_chunk(dispatch->hypertable, point);
 
@@ -60,7 +61,8 @@ chunk_dispatch_get_chunk_insert_state(ChunkDispatch *dispatch, Point *point)
 			elog(ERROR, "no chunk found or created");
 
 		cis = chunk_insert_state_create(new_chunk, dispatch);
-		subspace_store_add(dispatch->cache, new_chunk->cube, cis, destroy_chunk_insert_state);
+		subspace_store_add(
+		    dispatch->cache, new_chunk->cube, cis, destroy_chunk_insert_state);
 	}
 
 	Assert(cis != NULL);

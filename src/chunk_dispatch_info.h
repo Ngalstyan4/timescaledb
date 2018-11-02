@@ -14,7 +14,7 @@ typedef struct ChunkDispatchInfo
 {
 	ExtensibleNode enode;
 	/* Copied fields */
-	Oid			hypertable_relid;
+	Oid hypertable_relid;
 } ChunkDispatchInfo;
 
 extern ChunkDispatchInfo *chunk_dispatch_info_create(Oid hypertable_relid, Query *parse);
@@ -22,4 +22,4 @@ extern ChunkDispatchInfo *chunk_dispatch_info_create(Oid hypertable_relid, Query
 extern void _chunk_dispatch_info_init(void);
 extern void _chunk_dispatch_info_fini(void);
 
-#endif							/* TIMESCALEDB_CHUNK_DISPATCH_INFO_H */
+#endif /* TIMESCALEDB_CHUNK_DISPATCH_INFO_H */

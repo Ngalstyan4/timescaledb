@@ -8,19 +8,21 @@
 
 #include "compat.h"
 
-#define HIST_LEN(state) ((VARSIZE(state) - VARHDRSZ ) / sizeof(Datum))
+#define HIST_LEN(state) ((VARSIZE(state) - VARHDRSZ) / sizeof(Datum))
 
 /* aggregate histogram:
- *	 histogram(state, val, min, max, nbuckets) returns the histogram array with nbuckets
+ *	 histogram(state, val, min, max, nbuckets) returns the histogram array with
+ *nbuckets
  *
  * Usage:
- *	 SELECT grouping_element, histogram(field, min, max, nbuckets) FROM table GROUP BY grouping_element.
+ *	 SELECT grouping_element, histogram(field, min, max, nbuckets) FROM table GROUP BY
+ *grouping_element.
  *
  * Description:
- * Histogram generates a histogram array based off of a specified range passed into the function.
- * Values falling outside of this range are bucketed into the 0 or nbucket+1 buckets depending on
- * if they are below or above the range, respectively. The resultant histogram therefore contains
- * nbucket+2 buckets accounting for buckets outside the range.
+ * Histogram generates a histogram array based off of a specified range passed into the
+ *function. Values falling outside of this range are bucketed into the 0 or nbucket+1
+ *buckets depending on if they are below or above the range, respectively. The resultant
+ *histogram therefore contains nbucket+2 buckets accounting for buckets outside the range.
  */
 
 TS_FUNCTION_INFO_V1(ts_hist_sfunc);
@@ -30,20 +32,20 @@ TS_FUNCTION_INFO_V1(ts_hist_deserializefunc);
 TS_FUNCTION_INFO_V1(ts_hist_finalfunc);
 
 /* histogram(state, val, min, max, nbuckets) */
-Datum
-ts_hist_sfunc(PG_FUNCTION_ARGS)
+Datum ts_hist_sfunc(PG_FUNCTION_ARGS)
 {
 	MemoryContext aggcontext;
-	bytea	   *state = (PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0));
-	Datum	   *hist;
-	Datum		val_datum = PG_GETARG_DATUM(1);
-	Datum		min_datum = PG_GETARG_DATUM(2);
-	Datum		max_datum = PG_GETARG_DATUM(3);
-	Datum		nbuckets_datum = PG_GETARG_DATUM(4);
-	double		min = DatumGetFloat8(min_datum);
-	double		max = DatumGetFloat8(max_datum);
-	int			nbuckets = DatumGetInt32(nbuckets_datum);
-	int32		bucket = DatumGetInt32(DirectFunctionCall4(width_bucket_float8, val_datum, min_datum, max_datum, nbuckets_datum));
+	bytea *       state = (PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0));
+	Datum *       hist;
+	Datum	 val_datum = PG_GETARG_DATUM(1);
+	Datum	 min_datum = PG_GETARG_DATUM(2);
+	Datum	 max_datum = PG_GETARG_DATUM(3);
+	Datum	 nbuckets_datum = PG_GETARG_DATUM(4);
+	double	min = DatumGetFloat8(min_datum);
+	double	max = DatumGetFloat8(max_datum);
+	int	   nbuckets = DatumGetInt32(nbuckets_datum);
+	int32	 bucket = DatumGetInt32(DirectFunctionCall4(
+	    width_bucket_float8, val_datum, min_datum, max_datum, nbuckets_datum));
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
@@ -60,7 +62,7 @@ ts_hist_sfunc(PG_FUNCTION_ARGS)
 	if (state == NULL)
 	{
 		/* Allocate memory to a new histogram state array */
-		Size		arrsize = sizeof(Datum) * (nbuckets + 2);
+		Size arrsize = sizeof(Datum) * (nbuckets + 2);
 
 		state = MemoryContextAllocZero(aggcontext, VARHDRSZ + arrsize);
 		SET_VARSIZE(state, VARHDRSZ + arrsize);
@@ -77,8 +79,8 @@ ts_hist_sfunc(PG_FUNCTION_ARGS)
 static inline bytea *
 copy_state(MemoryContext aggcontext, bytea *state)
 {
-	bytea	   *copy;
-	Size		arrsize = VARSIZE(state) - VARHDRSZ;
+	bytea *copy;
+	Size   arrsize = VARSIZE(state) - VARHDRSZ;
 
 	copy = MemoryContextAllocZero(aggcontext, VARHDRSZ + arrsize);
 	SET_VARSIZE(copy, VARHDRSZ + arrsize);
@@ -88,14 +90,13 @@ copy_state(MemoryContext aggcontext, bytea *state)
 }
 
 /* ts_hist_combinefunc(internal, internal) => internal */
-Datum
-ts_hist_combinefunc(PG_FUNCTION_ARGS)
+Datum ts_hist_combinefunc(PG_FUNCTION_ARGS)
 {
 	MemoryContext aggcontext;
 
-	bytea	   *state1 = (PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0));
-	bytea	   *state2 = (PG_ARGISNULL(1) ? NULL : PG_GETARG_BYTEA_P(1));
-	bytea	   *result;
+	bytea *state1 = (PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0));
+	bytea *state2 = (PG_ARGISNULL(1) ? NULL : PG_GETARG_BYTEA_P(1));
+	bytea *result;
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
@@ -115,9 +116,8 @@ ts_hist_combinefunc(PG_FUNCTION_ARGS)
 
 	else
 	{
-		Size		i;
-		Datum	   *hist,
-				   *hist_other;
+		Size   i;
+		Datum *hist, *hist_other;
 
 		result = copy_state(aggcontext, state1);
 		hist = (Datum *) VARDATA(result);
@@ -125,19 +125,19 @@ ts_hist_combinefunc(PG_FUNCTION_ARGS)
 
 		/* Combine values from state1 and state2 when both states are non-null */
 		for (i = 0; i < HIST_LEN(state1); i++)
-			hist[i] = Int32GetDatum(DatumGetInt32(hist[i]) + DatumGetInt32(hist_other[i]));
+			hist[i] = Int32GetDatum(DatumGetInt32(hist[i]) +
+						DatumGetInt32(hist_other[i]));
 	}
 
 	PG_RETURN_BYTEA_P(result);
 }
 
 /* ts_hist_serializefunc(internal) => bytea */
-Datum
-ts_hist_serializefunc(PG_FUNCTION_ARGS)
+Datum ts_hist_serializefunc(PG_FUNCTION_ARGS)
 {
-	bytea	   *state;
-	Datum	   *hist;
-	Size		i;
+	bytea *state;
+	Datum *hist;
+	Size   i;
 
 	Assert(!PG_ARGISNULL(0));
 	state = PG_GETARG_BYTEA_P(0);
@@ -152,12 +152,11 @@ ts_hist_serializefunc(PG_FUNCTION_ARGS)
 }
 
 /* ts_hist_deserializefunc(bytea, internal) => internal */
-Datum
-ts_hist_deserializefunc(PG_FUNCTION_ARGS)
+Datum ts_hist_deserializefunc(PG_FUNCTION_ARGS)
 {
-	bytea	   *state;
-	Datum	   *hist;
-	Size		i;
+	bytea *state;
+	Datum *hist;
+	Size   i;
 
 	Assert(!PG_ARGISNULL(0));
 	state = PG_GETARG_BYTEA_P(0);
@@ -171,14 +170,14 @@ ts_hist_deserializefunc(PG_FUNCTION_ARGS)
 	PG_RETURN_BYTEA_P(state);
 }
 
-/* hist_funalfunc(internal, val REAL, MIN REAL, MAX REAL, nbuckets INTEGER) => INTEGER[] */
-Datum
-ts_hist_finalfunc(PG_FUNCTION_ARGS)
+/* hist_funalfunc(internal, val REAL, MIN REAL, MAX REAL, nbuckets INTEGER) => INTEGER[]
+ */
+Datum ts_hist_finalfunc(PG_FUNCTION_ARGS)
 {
-	bytea	   *state;
-	Datum	   *hist;
-	int			dims[1];
-	int			lbs[1];
+	bytea *state;
+	Datum *hist;
+	int    dims[1];
+	int    lbs[1];
 
 	if (!AggCheckCallContext(fcinfo, NULL))
 	{
@@ -195,5 +194,6 @@ ts_hist_finalfunc(PG_FUNCTION_ARGS)
 	dims[0] = HIST_LEN(state);
 	lbs[0] = 1;
 
-	PG_RETURN_ARRAYTYPE_P(construct_md_array(hist, NULL, 1, dims, lbs, INT4OID, 4, true, 'i'));
+	PG_RETURN_ARRAYTYPE_P(
+	    construct_md_array(hist, NULL, 1, dims, lbs, INT4OID, 4, true, 'i'));
 }

@@ -12,7 +12,7 @@ cmp_slices(const void *left, const void *right)
 static int
 cmp_coordinate_and_slice(const void *left, const void *right)
 {
-	int64		coord = *((int64 *) left);
+	int64		      coord = *((int64 *) left);
 	const DimensionSlice *slice = *((DimensionSlice **) right);
 
 	return dimension_slice_cmp_coordinate(slice, coord);
@@ -61,7 +61,8 @@ dimension_vec_add_slice(DimensionVec **vecptr, DimensionSlice *slice)
 	DimensionVec *vec = *vecptr;
 
 	/* Ensure consistent dimension */
-	Assert(vec->num_slices == 0 || vec->slices[0]->fd.dimension_id == slice->fd.dimension_id);
+	Assert(vec->num_slices == 0 ||
+	       vec->slices[0]->fd.dimension_id == slice->fd.dimension_id);
 
 	if (vec->num_slices + 1 > vec->capacity)
 		*vecptr = vec = dimension_vec_expand(vec, vec->capacity + 10);
@@ -86,7 +87,9 @@ dimension_vec_remove_slice(DimensionVec **vecptr, int32 index)
 	DimensionVec *vec = *vecptr;
 
 	dimension_slice_free(vec->slices[index]);
-	memmove(vec->slices + index, vec->slices + (index + 1), sizeof(DimensionSlice *) * (vec->num_slices - index - 1));
+	memmove(vec->slices + index,
+		vec->slices + (index + 1),
+		sizeof(DimensionSlice *) * (vec->num_slices - index - 1));
 	vec->num_slices--;
 }
 
@@ -94,7 +97,7 @@ dimension_vec_remove_slice(DimensionVec **vecptr, int32 index)
 static inline bool
 dimension_vec_is_sorted(DimensionVec *vec)
 {
-	int			i;
+	int i;
 
 	if (vec->num_slices < 2)
 		return true;
@@ -117,8 +120,11 @@ dimension_vec_find_slice(DimensionVec *vec, int64 coordinate)
 
 	Assert(dimension_vec_is_sorted(vec));
 
-	res = bsearch(&coordinate, vec->slices, vec->num_slices,
-				  sizeof(DimensionSlice *), cmp_coordinate_and_slice);
+	res = bsearch(&coordinate,
+		      vec->slices,
+		      vec->num_slices,
+		      sizeof(DimensionSlice *),
+		      cmp_coordinate_and_slice);
 
 	if (res == NULL)
 		return NULL;
@@ -129,7 +135,7 @@ dimension_vec_find_slice(DimensionVec *vec, int64 coordinate)
 int
 dimension_vec_find_slice_index(DimensionVec *vec, int32 dimension_slice_id)
 {
-	int			i;
+	int i;
 
 	for (i = 0; i < vec->num_slices; i++)
 		if (dimension_slice_id == vec->slices[i]->fd.id)
@@ -150,7 +156,7 @@ dimension_vec_get(DimensionVec *vec, int32 index)
 void
 dimension_vec_free(DimensionVec *vec)
 {
-	int			i;
+	int i;
 
 	for (i = 0; i < vec->num_slices; i++)
 		dimension_slice_free(vec->slices[i]);

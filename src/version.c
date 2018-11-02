@@ -24,7 +24,9 @@ version_get_info(VersionInfo *vinfo)
 
 	if (strlen(TIMESCALEDB_MOD_VERSION) > 0)
 	{
-		StrNCpy(vinfo->version_mod, TIMESCALEDB_MOD_VERSION, sizeof(vinfo->version_mod));
+		StrNCpy(vinfo->version_mod,
+			TIMESCALEDB_MOD_VERSION,
+			sizeof(vinfo->version_mod));
 		vinfo->has_version_mod = true;
 	}
 }
@@ -39,7 +41,7 @@ version_get_info(VersionInfo *vinfo)
 int
 version_cmp(VersionInfo *v1, VersionInfo *v2)
 {
-	int			i;
+	int i;
 
 	for (i = 0; i < 3; i++)
 	{
@@ -70,13 +72,13 @@ version_cmp(VersionInfo *v1, VersionInfo *v2)
 
 #define NUM_VERSION_DELIMS 4
 
-static const char *const version_delimiter[NUM_VERSION_DELIMS] = {".", ".", "-", ""};
+static const char *const version_delimiter[NUM_VERSION_DELIMS] = { ".", ".", "-", "" };
 
 bool
 version_parse(const char *version, VersionInfo *result)
 {
-	char	   *parse_version = pstrdup(version);
-	int			i;
+	char *parse_version = pstrdup(version);
+	int   i;
 
 	memset(result, 0, sizeof(VersionInfo));
 
@@ -95,7 +97,10 @@ version_parse(const char *version, VersionInfo *result)
 		 */
 		if (i > 0 && version_delimiter[i - 1][0] == '-')
 		{
-			int			len = snprintf(result->version_mod, sizeof(result->version_mod) - 1, "%s", subversion);
+			int len = snprintf(result->version_mod,
+					   sizeof(result->version_mod) - 1,
+					   "%s",
+					   subversion);
 
 			if (len > (sizeof(result->version_mod) - 1))
 				return false;
@@ -105,7 +110,7 @@ version_parse(const char *version, VersionInfo *result)
 		}
 		else
 		{
-			char	   *endptr;
+			char *endptr;
 
 			Assert(i < VERSION_PARTS);
 
@@ -126,22 +131,21 @@ version_parse(const char *version, VersionInfo *result)
 
 TS_FUNCTION_INFO_V1(ts_version_get_info);
 
-Datum
-ts_version_get_info(PG_FUNCTION_ARGS)
+Datum ts_version_get_info(PG_FUNCTION_ARGS)
 {
 	VersionInfo info;
-	TupleDesc	tupdesc;
-	Datum		values[4];
-	bool		nulls[4] = {false};
-	HeapTuple	tuple;
+	TupleDesc   tupdesc;
+	Datum       values[4];
+	bool	nulls[4] = { false };
+	HeapTuple   tuple;
 
 	version_get_info(&info);
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("function returning record called in context "
-						"that cannot accept type record")));
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("function returning record called in context "
+				"that cannot accept type record")));
 
 	values[0] = Int32GetDatum((int32) info.version[0]);
 	values[1] = Int32GetDatum((int32) info.version[1]);
@@ -161,17 +165,14 @@ const char *git_commit = STR(EXT_GIT_COMMIT);
 
 TS_FUNCTION_INFO_V1(ts_get_git_commit);
 
-Datum
-ts_get_git_commit(PG_FUNCTION_ARGS)
+Datum ts_get_git_commit(PG_FUNCTION_ARGS)
 {
-	size_t		var_size = VARHDRSZ + strlen(git_commit);
-	text	   *version_text = (text *) palloc(var_size);
+	size_t var_size = VARHDRSZ + strlen(git_commit);
+	text * version_text = (text *) palloc(var_size);
 
 	SET_VARSIZE(version_text, var_size);
 
-	memcpy((void *) VARDATA(version_text),
-		   (void *) git_commit,
-		   var_size - VARHDRSZ);
+	memcpy((void *) VARDATA(version_text), (void *) git_commit, var_size - VARHDRSZ);
 
 	PG_RETURN_TEXT_P(version_text);
 }
@@ -183,10 +184,10 @@ ts_get_git_commit(PG_FUNCTION_ARGS)
 bool
 version_get_os_info(VersionOSInfo *info)
 {
-	DWORD		bufsize;
-	void	   *buffer;
+	DWORD		  bufsize;
+	void *		  buffer;
 	VS_FIXEDFILEINFO *vinfo = NULL;
-	UINT		vinfo_len = 0;
+	UINT		  vinfo_len = 0;
 
 	memset(info, 0, sizeof(VersionOSInfo));
 
@@ -204,8 +205,10 @@ version_get_os_info(VersionOSInfo *info)
 		goto error;
 
 	snprintf(info->sysname, VERSION_INFO_LEN - 1, "Windows");
-	snprintf(info->version, VERSION_INFO_LEN - 1, "%u", HIWORD(vinfo->dwProductVersionMS));
-	snprintf(info->release, VERSION_INFO_LEN - 1, "%u", LOWORD(vinfo->dwProductVersionMS));
+	snprintf(
+	    info->version, VERSION_INFO_LEN - 1, "%u", HIWORD(vinfo->dwProductVersionMS));
+	snprintf(
+	    info->release, VERSION_INFO_LEN - 1, "%u", LOWORD(vinfo->dwProductVersionMS));
 
 	pfree(buffer);
 
@@ -242,24 +245,23 @@ version_get_os_info(VersionOSInfo *info)
 	memset(info, 0, sizeof(VersionOSInfo));
 	return false;
 }
-#endif							/* WIN32 */
+#endif /* WIN32 */
 
 TS_FUNCTION_INFO_V1(ts_get_os_info);
 
-Datum
-ts_get_os_info(PG_FUNCTION_ARGS)
+Datum ts_get_os_info(PG_FUNCTION_ARGS)
 {
-	TupleDesc	tupdesc;
-	Datum		values[3];
-	bool		nulls[3] = {false};
-	HeapTuple	tuple;
+	TupleDesc     tupdesc;
+	Datum	 values[3];
+	bool	  nulls[3] = { false };
+	HeapTuple     tuple;
 	VersionOSInfo info;
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("function returning record called in context "
-						"that cannot accept type record")));
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("function returning record called in context "
+				"that cannot accept type record")));
 
 	if (version_get_os_info(&info))
 	{

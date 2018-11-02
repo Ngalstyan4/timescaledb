@@ -39,8 +39,8 @@
  * fails. This is why we also need to invalidate caches on transaction failure.
  */
 
-void		_cache_invalidate_init(void);
-void		_cache_invalidate_fini(void);
+void _cache_invalidate_init(void);
+void _cache_invalidate_fini(void);
 
 static void
 cache_invalidate_all(void)
@@ -55,7 +55,7 @@ cache_invalidate_all(void)
 static void
 cache_invalidate_callback(Datum arg, Oid relid)
 {
-	Catalog    *catalog;
+	Catalog *catalog;
 
 	if (extension_invalidate(relid))
 	{
@@ -83,8 +83,7 @@ TS_FUNCTION_INFO_V1(ts_timescaledb_invalidate_cache);
  * The first argument should be the catalog table that has changed, warranting a
  * cache invalidation.
  */
-Datum
-ts_timescaledb_invalidate_cache(PG_FUNCTION_ARGS)
+Datum ts_timescaledb_invalidate_cache(PG_FUNCTION_ARGS)
 {
 	catalog_invalidate_cache(PG_GETARG_OID(0), CMD_UPDATE);
 	PG_RETURN_VOID();
@@ -95,37 +94,37 @@ cache_invalidate_xact_end(XactEvent event, void *arg)
 {
 	switch (event)
 	{
-		case XACT_EVENT_ABORT:
-		case XACT_EVENT_PARALLEL_ABORT:
+	case XACT_EVENT_ABORT:
+	case XACT_EVENT_PARALLEL_ABORT:
 
-			/*
-			 * Invalidate caches on aborted transactions to purge entries that
-			 * have been added during the transaction and are now no longer
-			 * valid. Note that we need not signal other backends of this
-			 * change since the transaction hasn't been committed and other
-			 * backends cannot have the invalid state.
-			 */
-			cache_invalidate_all();
-		default:
-			break;
+		/*
+		 * Invalidate caches on aborted transactions to purge entries that
+		 * have been added during the transaction and are now no longer
+		 * valid. Note that we need not signal other backends of this
+		 * change since the transaction hasn't been committed and other
+		 * backends cannot have the invalid state.
+		 */
+		cache_invalidate_all();
+	default:
+		break;
 	}
 }
 
 static void
 cache_invalidate_subxact_end(SubXactEvent event, SubTransactionId mySubid,
-							 SubTransactionId parentSubid, void *arg)
+			     SubTransactionId parentSubid, void *arg)
 {
 	switch (event)
 	{
-		case SUBXACT_EVENT_ABORT_SUB:
+	case SUBXACT_EVENT_ABORT_SUB:
 
-			/*
-			 * Invalidate caches on aborted sub transactions. See notes above
-			 * in cache_invalidate_xact_end.
-			 */
-			cache_invalidate_all();
-		default:
-			break;
+		/*
+		 * Invalidate caches on aborted sub transactions. See notes above
+		 * in cache_invalidate_xact_end.
+		 */
+		cache_invalidate_all();
+	default:
+		break;
 	}
 }
 

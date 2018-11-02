@@ -18,10 +18,11 @@
 #include "chunk_constraint.h"
 #include "dimension_vector.h"
 
-
-/* Put DIMENSION_SLICE_MAXVALUE point in same slice as DIMENSION_SLICE_MAXVALUE-1, always */
+/* Put DIMENSION_SLICE_MAXVALUE point in same slice as DIMENSION_SLICE_MAXVALUE-1, always
+ */
 /* This avoids the problem with coord < range_end where coord and range_end is an int64 */
-#define REMAP_LAST_COORDINATE(coord) (((coord)==DIMENSION_SLICE_MAXVALUE) ? DIMENSION_SLICE_MAXVALUE-1 : (coord))
+#define REMAP_LAST_COORDINATE(coord)                                                     \
+	(((coord) == DIMENSION_SLICE_MAXVALUE) ? DIMENSION_SLICE_MAXVALUE - 1 : (coord))
 
 static inline DimensionSlice *
 dimension_slice_alloc(void)
@@ -78,7 +79,6 @@ dimension_slice_cmp(const DimensionSlice *left, const DimensionSlice *right)
 	return -1;
 }
 
-
 int
 dimension_slice_cmp_coordinate(const DimensionSlice *slice, int64 coord)
 {
@@ -95,13 +95,13 @@ dimension_slice_cmp_coordinate(const DimensionSlice *slice, int64 coord)
 typedef struct DimensionSliceScanData
 {
 	DimensionVec *slices;
-	int			limit;
-}			DimensionSliceScanData;
+	int	   limit;
+} DimensionSliceScanData;
 
 static bool
 dimension_vec_tuple_found(TupleInfo *ti, void *data)
 {
-	DimensionVec **slices = data;
+	DimensionVec ** slices = data;
 	DimensionSlice *slice = dimension_slice_from_tuple(ti->tuple);
 
 	*slices = dimension_vec_add_slice(slices, slice);
@@ -110,18 +110,14 @@ dimension_vec_tuple_found(TupleInfo *ti, void *data)
 }
 
 static int
-dimension_slice_scan_limit_direction_internal(int indexid,
-											  ScanKeyData *scankey,
-											  int nkeys,
-											  tuple_found_func on_tuple_found,
-											  void *scandata,
-											  int limit,
-											  ScanDirection scandir,
-											  LOCKMODE lockmode,
-											  MemoryContext mctx)
+dimension_slice_scan_limit_direction_internal(int indexid, ScanKeyData *scankey,
+					      int nkeys, tuple_found_func on_tuple_found,
+					      void *scandata, int limit,
+					      ScanDirection scandir, LOCKMODE lockmode,
+					      MemoryContext mctx)
 {
-	Catalog    *catalog = catalog_get();
-	ScannerCtx	scanctx = {
+	Catalog *  catalog = catalog_get();
+	ScannerCtx scanctx = {
 		.table = catalog->tables[DIMENSION_SLICE].id,
 		.index = catalog->tables[DIMENSION_SLICE].index_ids[indexid],
 		.nkeys = nkeys,
@@ -137,26 +133,20 @@ dimension_slice_scan_limit_direction_internal(int indexid,
 	return scanner_scan(&scanctx);
 }
 
-
 static int
-dimension_slice_scan_limit_internal(int indexid,
-									ScanKeyData *scankey,
-									int nkeys,
-									tuple_found_func on_tuple_found,
-									void *scandata,
-									int limit,
-									LOCKMODE lockmode,
-									MemoryContext mctx)
+dimension_slice_scan_limit_internal(int indexid, ScanKeyData *scankey, int nkeys,
+				    tuple_found_func on_tuple_found, void *scandata,
+				    int limit, LOCKMODE lockmode, MemoryContext mctx)
 {
 	return dimension_slice_scan_limit_direction_internal(indexid,
-														 scankey,
-														 nkeys,
-														 on_tuple_found,
-														 scandata,
-														 limit,
-														 ForwardScanDirection,
-														 lockmode,
-														 mctx);
+							     scankey,
+							     nkeys,
+							     on_tuple_found,
+							     scandata,
+							     limit,
+							     ForwardScanDirection,
+							     lockmode,
+							     mctx);
 }
 
 /*
@@ -167,8 +157,9 @@ dimension_slice_scan_limit_internal(int indexid,
 DimensionVec *
 dimension_slice_scan_limit(int32 dimension_id, int64 coordinate, int limit)
 {
-	ScanKeyData scankey[3];
-	DimensionVec *slices = dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
+	ScanKeyData   scankey[3];
+	DimensionVec *slices =
+	    dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
 
 	coordinate = REMAP_LAST_COORDINATE(coordinate);
 
@@ -176,21 +167,33 @@ dimension_slice_scan_limit(int32 dimension_id, int64 coordinate, int limit)
 	 * Perform an index scan for slices matching the dimension's ID and which
 	 * enclose the coordinate.
 	 */
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(dimension_id));
-	ScanKeyInit(&scankey[1], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
-				BTLessEqualStrategyNumber, F_INT8LE, Int64GetDatum(coordinate));
-	ScanKeyInit(&scankey[2], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
-				BTGreaterStrategyNumber, F_INT8GT, Int64GetDatum(coordinate));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(dimension_id));
+	ScanKeyInit(
+	    &scankey[1],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
+	    BTLessEqualStrategyNumber,
+	    F_INT8LE,
+	    Int64GetDatum(coordinate));
+	ScanKeyInit(&scankey[2],
+		    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
+		    BTGreaterStrategyNumber,
+		    F_INT8GT,
+		    Int64GetDatum(coordinate));
 
-	dimension_slice_scan_limit_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-										scankey,
-										3,
-										dimension_vec_tuple_found,
-										&slices,
-										limit,
-										AccessShareLock,
-										CurrentMemoryContext);
+	dimension_slice_scan_limit_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    3,
+	    dimension_vec_tuple_found,
+	    &slices,
+	    limit,
+	    AccessShareLock,
+	    CurrentMemoryContext);
 
 	return dimension_vec_sort(&slices);
 }
@@ -200,35 +203,45 @@ dimension_slice_scan_limit(int32 dimension_id, int64 coordinate, int limit)
  *
  */
 DimensionVec *
-dimension_slice_scan_range_limit(int32 dimension_id, StrategyNumber start_strategy, int64 start_value, StrategyNumber end_strategy, int64 end_value, int limit)
+dimension_slice_scan_range_limit(int32 dimension_id, StrategyNumber start_strategy,
+				 int64 start_value, StrategyNumber end_strategy,
+				 int64 end_value, int limit)
 {
-	ScanKeyData scankey[3];
-	DimensionVec *slices = dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
-	int			nkeys = 1;
+	ScanKeyData   scankey[3];
+	DimensionVec *slices =
+	    dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
+	int nkeys = 1;
 
 	/*
 	 * Perform an index scan for slices matching the dimension's ID and which
 	 * enclose the coordinate.
 	 */
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(dimension_id));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(dimension_id));
 	if (start_strategy != InvalidStrategy)
 	{
-		Oid			opno = get_opfamily_member(INTEGER_BTREE_FAM_OID, INT8OID, INT8OID, start_strategy);
-		Oid			proc = get_opcode(opno);
+		Oid opno = get_opfamily_member(
+		    INTEGER_BTREE_FAM_OID, INT8OID, INT8OID, start_strategy);
+		Oid proc = get_opcode(opno);
 
 		Assert(OidIsValid(proc));
 
-		ScanKeyInit(&scankey[nkeys++],
-					Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
-					start_strategy,
-					proc,
-					Int64GetDatum(start_value));
+		ScanKeyInit(
+		    &scankey[nkeys++],
+		    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
+		    start_strategy,
+		    proc,
+		    Int64GetDatum(start_value));
 	}
 	if (end_strategy != InvalidStrategy)
 	{
-		Oid			opno = get_opfamily_member(INTEGER_BTREE_FAM_OID, INT8OID, INT8OID, end_strategy);
-		Oid			proc = get_opcode(opno);
+		Oid opno = get_opfamily_member(
+		    INTEGER_BTREE_FAM_OID, INT8OID, INT8OID, end_strategy);
+		Oid proc = get_opcode(opno);
 
 		Assert(OidIsValid(proc));
 
@@ -255,21 +268,23 @@ dimension_slice_scan_range_limit(int32 dimension_id, StrategyNumber start_strate
 			end_value = PG_INT64_MAX;
 		}
 
-		ScanKeyInit(&scankey[nkeys++],
-					Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
-					end_strategy,
-					proc,
-					Int64GetDatum(end_value));
+		ScanKeyInit(
+		    &scankey[nkeys++],
+		    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
+		    end_strategy,
+		    proc,
+		    Int64GetDatum(end_value));
 	}
 
-	dimension_slice_scan_limit_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-										scankey,
-										nkeys,
-										dimension_vec_tuple_found,
-										&slices,
-										limit,
-										AccessShareLock,
-										CurrentMemoryContext);
+	dimension_slice_scan_limit_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    nkeys,
+	    dimension_vec_tuple_found,
+	    &slices,
+	    limit,
+	    AccessShareLock,
+	    CurrentMemoryContext);
 
 	return dimension_vec_sort(&slices);
 }
@@ -280,26 +295,40 @@ dimension_slice_scan_range_limit(int32 dimension_id, StrategyNumber start_strate
  * Returns a dimension vector of colliding slices.
  */
 DimensionVec *
-dimension_slice_collision_scan_limit(int32 dimension_id, int64 range_start, int64 range_end, int limit)
+dimension_slice_collision_scan_limit(int32 dimension_id, int64 range_start,
+				     int64 range_end, int limit)
 {
-	ScanKeyData scankey[3];
-	DimensionVec *slices = dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
+	ScanKeyData   scankey[3];
+	DimensionVec *slices =
+	    dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
 
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(dimension_id));
-	ScanKeyInit(&scankey[1], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
-				BTLessStrategyNumber, F_INT8LT, Int64GetDatum(range_end));
-	ScanKeyInit(&scankey[2], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
-				BTGreaterStrategyNumber, F_INT8GT, Int64GetDatum(range_start));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(dimension_id));
+	ScanKeyInit(
+	    &scankey[1],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
+	    BTLessStrategyNumber,
+	    F_INT8LT,
+	    Int64GetDatum(range_end));
+	ScanKeyInit(&scankey[2],
+		    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
+		    BTGreaterStrategyNumber,
+		    F_INT8GT,
+		    Int64GetDatum(range_start));
 
-	dimension_slice_scan_limit_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-										scankey,
-										3,
-										dimension_vec_tuple_found,
-										&slices,
-										limit,
-										AccessShareLock,
-										CurrentMemoryContext);
+	dimension_slice_scan_limit_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    3,
+	    dimension_vec_tuple_found,
+	    &slices,
+	    limit,
+	    AccessShareLock,
+	    CurrentMemoryContext);
 
 	return dimension_vec_sort(&slices);
 }
@@ -307,20 +336,26 @@ dimension_slice_collision_scan_limit(int32 dimension_id, int64 range_start, int6
 DimensionVec *
 dimension_slice_scan_by_dimension(int32 dimension_id, int limit)
 {
-	ScanKeyData scankey[1];
-	DimensionVec *slices = dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
+	ScanKeyData   scankey[1];
+	DimensionVec *slices =
+	    dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
 
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(dimension_id));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(dimension_id));
 
-	dimension_slice_scan_limit_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-										scankey,
-										1,
-										dimension_vec_tuple_found,
-										&slices,
-										limit,
-										AccessShareLock,
-										CurrentMemoryContext);
+	dimension_slice_scan_limit_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    1,
+	    dimension_vec_tuple_found,
+	    &slices,
+	    limit,
+	    AccessShareLock,
+	    CurrentMemoryContext);
 
 	return dimension_vec_sort(&slices);
 }
@@ -332,27 +367,41 @@ dimension_slice_scan_by_dimension(int32 dimension_id, int limit)
  * the returned dimension vector is allocated on the current memory context.
  */
 DimensionVec *
-dimension_slice_scan_by_dimension_before_point(int32 dimension_id, int64 point, int limit, ScanDirection scandir, MemoryContext mctx)
+dimension_slice_scan_by_dimension_before_point(int32 dimension_id, int64 point, int limit,
+					       ScanDirection scandir, MemoryContext mctx)
 {
-	ScanKeyData scankey[3];
-	DimensionVec *slices = dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
+	ScanKeyData   scankey[3];
+	DimensionVec *slices =
+	    dimension_vec_create(limit > 0 ? limit : DIMENSION_VEC_DEFAULT_SIZE);
 
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(dimension_id));
-	ScanKeyInit(&scankey[1], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
-				BTLessStrategyNumber, F_INT8LT, Int64GetDatum(point));
-	ScanKeyInit(&scankey[2], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
-				BTLessStrategyNumber, F_INT8LT, Int64GetDatum(point));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(dimension_id));
+	ScanKeyInit(
+	    &scankey[1],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
+	    BTLessStrategyNumber,
+	    F_INT8LT,
+	    Int64GetDatum(point));
+	ScanKeyInit(&scankey[2],
+		    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
+		    BTLessStrategyNumber,
+		    F_INT8LT,
+		    Int64GetDatum(point));
 
-	dimension_slice_scan_limit_direction_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-												  scankey,
-												  3,
-												  dimension_vec_tuple_found,
-												  &slices,
-												  limit,
-												  scandir,
-												  AccessShareLock,
-												  mctx);
+	dimension_slice_scan_limit_direction_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    3,
+	    dimension_vec_tuple_found,
+	    &slices,
+	    limit,
+	    scandir,
+	    AccessShareLock,
+	    mctx);
 
 	return dimension_vec_sort(&slices);
 }
@@ -360,16 +409,18 @@ dimension_slice_scan_by_dimension_before_point(int32 dimension_id, int64 point, 
 static bool
 dimension_slice_tuple_delete(TupleInfo *ti, void *data)
 {
-	bool		isnull;
-	Datum		dimension_slice_id = heap_getattr(ti->tuple, Anum_dimension_slice_id, ti->desc, &isnull);
-	bool	   *delete_constraints = data;
+	bool  isnull;
+	Datum dimension_slice_id =
+	    heap_getattr(ti->tuple, Anum_dimension_slice_id, ti->desc, &isnull);
+	bool *		       delete_constraints = data;
 	CatalogSecurityContext sec_ctx;
 
 	Assert(!isnull);
 
 	/* delete chunk constraints */
 	if (NULL != delete_constraints && *delete_constraints)
-		chunk_constraint_delete_by_dimension_slice_id(DatumGetInt32(dimension_slice_id));
+		chunk_constraint_delete_by_dimension_slice_id(
+		    DatumGetInt32(dimension_slice_id));
 
 	catalog_become_owner(catalog_get(), &sec_ctx);
 	catalog_delete(ti->scanrel, ti->tuple);
@@ -383,20 +434,22 @@ dimension_slice_delete_by_dimension_id(int32 dimension_id, bool delete_constrain
 {
 	ScanKeyData scankey[1];
 
-	ScanKeyInit(&scankey[0],
-				Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber,
-				F_INT4EQ,
-				Int32GetDatum(dimension_id));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(dimension_id));
 
-	return dimension_slice_scan_limit_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-											   scankey,
-											   1,
-											   dimension_slice_tuple_delete,
-											   &delete_constraints,
-											   0,
-											   RowExclusiveLock,
-											   CurrentMemoryContext);
+	return dimension_slice_scan_limit_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    1,
+	    dimension_slice_tuple_delete,
+	    &delete_constraints,
+	    0,
+	    RowExclusiveLock,
+	    CurrentMemoryContext);
 }
 
 int
@@ -405,19 +458,19 @@ dimension_slice_delete_by_id(int32 dimension_slice_id, bool delete_constraints)
 	ScanKeyData scankey[1];
 
 	ScanKeyInit(&scankey[0],
-				Anum_dimension_slice_id_idx_id,
-				BTEqualStrategyNumber,
-				F_INT4EQ,
-				Int32GetDatum(dimension_slice_id));
+		    Anum_dimension_slice_id_idx_id,
+		    BTEqualStrategyNumber,
+		    F_INT4EQ,
+		    Int32GetDatum(dimension_slice_id));
 
 	return dimension_slice_scan_limit_internal(DIMENSION_SLICE_ID_IDX,
-											   scankey,
-											   1,
-											   dimension_slice_tuple_delete,
-											   &delete_constraints,
-											   1,
-											   RowExclusiveLock,
-											   CurrentMemoryContext);
+						   scankey,
+						   1,
+						   dimension_slice_tuple_delete,
+						   &delete_constraints,
+						   1,
+						   RowExclusiveLock,
+						   CurrentMemoryContext);
 }
 
 static bool
@@ -438,16 +491,33 @@ dimension_slice_scan_for_existing(DimensionSlice *slice)
 {
 	ScanKeyData scankey[3];
 
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(slice->fd.dimension_id));
-	ScanKeyInit(&scankey[1], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
-				BTEqualStrategyNumber, F_INT8EQ, Int64GetDatum(slice->fd.range_start));
-	ScanKeyInit(&scankey[2], Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
-				BTEqualStrategyNumber, F_INT8EQ, Int64GetDatum(slice->fd.range_end));
+	ScanKeyInit(
+	    &scankey[0],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_dimension_id,
+	    BTEqualStrategyNumber,
+	    F_INT4EQ,
+	    Int32GetDatum(slice->fd.dimension_id));
+	ScanKeyInit(
+	    &scankey[1],
+	    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_start,
+	    BTEqualStrategyNumber,
+	    F_INT8EQ,
+	    Int64GetDatum(slice->fd.range_start));
+	ScanKeyInit(&scankey[2],
+		    Anum_dimension_slice_dimension_id_range_start_range_end_idx_range_end,
+		    BTEqualStrategyNumber,
+		    F_INT8EQ,
+		    Int64GetDatum(slice->fd.range_end));
 
-	dimension_slice_scan_limit_internal(DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
-										scankey, 3, dimension_slice_fill, &slice, 1,
-										AccessShareLock, CurrentMemoryContext);
+	dimension_slice_scan_limit_internal(
+	    DIMENSION_SLICE_DIMENSION_ID_RANGE_START_RANGE_END_IDX,
+	    scankey,
+	    3,
+	    dimension_slice_fill,
+	    &slice,
+	    1,
+	    AccessShareLock,
+	    CurrentMemoryContext);
 
 	return slice;
 }
@@ -456,7 +526,7 @@ static bool
 dimension_slice_tuple_found(TupleInfo *ti, void *data)
 {
 	DimensionSlice **slice = data;
-	MemoryContext old = MemoryContextSwitchTo(ti->mctx);
+	MemoryContext    old = MemoryContextSwitchTo(ti->mctx);
 
 	*slice = dimension_slice_from_tuple(ti->tuple);
 	MemoryContextSwitchTo(old);
@@ -467,19 +537,22 @@ DimensionSlice *
 dimension_slice_scan_by_id(int32 dimension_slice_id, MemoryContext mctx)
 {
 	DimensionSlice *slice = NULL;
-	ScanKeyData scankey[1];
+	ScanKeyData     scankey[1];
 
-	ScanKeyInit(&scankey[0], Anum_dimension_slice_id_idx_id,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(dimension_slice_id));
+	ScanKeyInit(&scankey[0],
+		    Anum_dimension_slice_id_idx_id,
+		    BTEqualStrategyNumber,
+		    F_INT4EQ,
+		    Int32GetDatum(dimension_slice_id));
 
 	dimension_slice_scan_limit_internal(DIMENSION_SLICE_ID_IDX,
-										scankey,
-										1,
-										dimension_slice_tuple_found,
-										&slice,
-										1,
-										AccessShareLock,
-										mctx);
+					    scankey,
+					    1,
+					    dimension_slice_tuple_found,
+					    &slice,
+					    1,
+					    AccessShareLock,
+					    mctx);
 
 	return slice;
 }
@@ -508,7 +581,7 @@ dimension_slices_collide(DimensionSlice *slice1, DimensionSlice *slice2)
 	Assert(slice1->fd.dimension_id == slice2->fd.dimension_id);
 
 	return (slice1->fd.range_start < slice2->fd.range_end &&
-			slice1->fd.range_end > slice2->fd.range_start);
+		slice1->fd.range_end > slice2->fd.range_start);
 }
 
 /*
@@ -525,7 +598,7 @@ dimension_slices_equal(DimensionSlice *slice1, DimensionSlice *slice2)
 	Assert(slice1->fd.dimension_id == slice2->fd.dimension_id);
 
 	return slice1->fd.range_start == slice2->fd.range_start &&
-		slice1->fd.range_end == slice2->fd.range_end;
+	       slice1->fd.range_end == slice2->fd.range_end;
 }
 
 /*-
@@ -551,8 +624,7 @@ dimension_slice_cut(DimensionSlice *to_cut, DimensionSlice *other, int64 coord)
 
 	coord = REMAP_LAST_COORDINATE(coord);
 
-	if (other->fd.range_end <= coord &&
-		other->fd.range_end > to_cut->fd.range_start)
+	if (other->fd.range_end <= coord && other->fd.range_end > to_cut->fd.range_start)
 	{
 		/* Cut "before" the coordinate */
 		to_cut->fd.range_start = other->fd.range_end;
@@ -560,7 +632,7 @@ dimension_slice_cut(DimensionSlice *to_cut, DimensionSlice *other, int64 coord)
 		return true;
 	}
 	else if (other->fd.range_start > coord &&
-			 other->fd.range_start < to_cut->fd.range_end)
+		 other->fd.range_start < to_cut->fd.range_end)
 	{
 		/* Cut "after" the coordinate */
 		to_cut->fd.range_end = other->fd.range_start;
@@ -582,9 +654,9 @@ dimension_slice_free(DimensionSlice *slice)
 static bool
 dimension_slice_insert_relation(Relation rel, DimensionSlice *slice)
 {
-	TupleDesc	desc = RelationGetDescr(rel);
-	Datum		values[Natts_dimension_slice];
-	bool		nulls[Natts_dimension_slice] = {false};
+	TupleDesc	      desc = RelationGetDescr(rel);
+	Datum		       values[Natts_dimension_slice];
+	bool		       nulls[Natts_dimension_slice] = { false };
 	CatalogSecurityContext sec_ctx;
 
 	if (slice->fd.id > 0)
@@ -594,10 +666,14 @@ dimension_slice_insert_relation(Relation rel, DimensionSlice *slice)
 	catalog_become_owner(catalog_get(), &sec_ctx);
 	memset(values, 0, sizeof(values));
 	slice->fd.id = catalog_table_next_seq_id(catalog_get(), DIMENSION_SLICE);
-	values[AttrNumberGetAttrOffset(Anum_dimension_slice_id)] = Int32GetDatum(slice->fd.id);
-	values[AttrNumberGetAttrOffset(Anum_dimension_slice_dimension_id)] = Int32GetDatum(slice->fd.dimension_id);
-	values[AttrNumberGetAttrOffset(Anum_dimension_slice_range_start)] = Int64GetDatum(slice->fd.range_start);
-	values[AttrNumberGetAttrOffset(Anum_dimension_slice_range_end)] = Int64GetDatum(slice->fd.range_end);
+	values[AttrNumberGetAttrOffset(Anum_dimension_slice_id)] =
+	    Int32GetDatum(slice->fd.id);
+	values[AttrNumberGetAttrOffset(Anum_dimension_slice_dimension_id)] =
+	    Int32GetDatum(slice->fd.dimension_id);
+	values[AttrNumberGetAttrOffset(Anum_dimension_slice_range_start)] =
+	    Int64GetDatum(slice->fd.range_start);
+	values[AttrNumberGetAttrOffset(Anum_dimension_slice_range_end)] =
+	    Int64GetDatum(slice->fd.range_end);
 
 	catalog_insert_values(rel, desc, values, nulls);
 	catalog_restore_user(&sec_ctx);
@@ -611,9 +687,9 @@ dimension_slice_insert_relation(Relation rel, DimensionSlice *slice)
 void
 dimension_slice_insert_multi(DimensionSlice **slices, Size num_slices)
 {
-	Catalog    *catalog = catalog_get();
-	Relation	rel;
-	Size		i;
+	Catalog *catalog = catalog_get();
+	Relation rel;
+	Size     i;
 
 	rel = heap_open(catalog->tables[DIMENSION_SLICE].id, RowExclusiveLock);
 

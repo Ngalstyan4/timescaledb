@@ -20,7 +20,7 @@ static Node *
 create_chunk_dispatch_state(CustomScan *cscan)
 {
 	return (Node *) chunk_dispatch_state_create(linitial(cscan->custom_private),
-												linitial(cscan->custom_plans));
+						    linitial(cscan->custom_plans));
 }
 
 static CustomScanMethods chunk_dispatch_plan_methods = {
@@ -45,16 +45,16 @@ static CustomScanMethods chunk_dispatch_plan_methods = {
 static List *
 build_customscan_targetlist(Relation rel, List *targetlist)
 {
-	TupleDesc	tupdesc = RelationGetDescr(rel);
-	List	   *new_targetlist = NIL;
-	ListCell   *lc;
-	int			attno = 0;
+	TupleDesc tupdesc = RelationGetDescr(rel);
+	List *    new_targetlist = NIL;
+	ListCell *lc;
+	int       attno = 0;
 
-	foreach(lc, targetlist)
+	foreach (lc, targetlist)
 	{
-		TargetEntry *te = lfirst(lc);
+		TargetEntry *     te = lfirst(lc);
 		Form_pg_attribute attr;
-		Expr	   *expr;
+		Expr *		  expr;
 
 		/* Ignore junk items */
 		if (te->resjunk)
@@ -62,20 +62,22 @@ build_customscan_targetlist(Relation rel, List *targetlist)
 
 		if (attno >= tupdesc->natts)
 			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("table row type and query-specified row type do not match"),
-					 errdetail("Query has too many columns.")));
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("table row type and query-specified row type do "
+					"not match"),
+				 errdetail("Query has too many columns.")));
 
 		attr = tupdesc->attrs[attno++];
 
 		if (attr->attisdropped)
 			expr = &makeConst(INT4OID,
-							  -1,
-							  InvalidOid,
-							  sizeof(int32),
-							  (Datum) 0,
-							  true,
-							  true)->xpr;
+					  -1,
+					  InvalidOid,
+					  sizeof(int32),
+					  (Datum) 0,
+					  true,
+					  true)
+				    ->xpr;
 		else
 
 			/*
@@ -84,24 +86,23 @@ build_customscan_targetlist(Relation rel, List *targetlist)
 			 * types.
 			 */
 			expr = &makeVar(INDEX_VAR,
-							attno,
-							exprType((Node *) te->expr),
-							exprTypmod((Node *) te->expr),
-							exprCollation((Node *) te->expr),
-							0)->xpr;
+					attno,
+					exprType((Node *) te->expr),
+					exprTypmod((Node *) te->expr),
+					exprCollation((Node *) te->expr),
+					0)
+				    ->xpr;
 
 		new_targetlist = lappend(new_targetlist,
-								 makeTargetEntry(expr,
-												 attno,
-												 NULL,
-												 te->resjunk));
+					 makeTargetEntry(expr, attno, NULL, te->resjunk));
 	}
 
 	if (attno != tupdesc->natts)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("table row type and query-specified row type do not match"),
-				 errdetail("Query has too few columns.")));
+		ereport(
+		    ERROR,
+		    (errcode(ERRCODE_DATATYPE_MISMATCH),
+		     errmsg("table row type and query-specified row type do not match"),
+		     errdetail("Query has too few columns.")));
 
 	return new_targetlist;
 }
@@ -121,17 +122,18 @@ build_customscan_targetlist(Relation rel, List *targetlist)
  * node.
  */
 CustomScan *
-chunk_dispatch_plan_create(Plan *subplan, Index hypertable_rti, Oid hypertable_relid, Query *parse)
+chunk_dispatch_plan_create(Plan *subplan, Index hypertable_rti, Oid hypertable_relid,
+			   Query *parse)
 {
-	CustomScan *cscan = makeNode(CustomScan);
+	CustomScan *       cscan = makeNode(CustomScan);
 	ChunkDispatchInfo *info = chunk_dispatch_info_create(hypertable_relid, parse);
-	Relation	rel;
+	Relation	   rel;
 
 	cscan->custom_private = list_make1(info);
 	cscan->methods = &chunk_dispatch_plan_methods;
 	cscan->custom_plans = list_make1(subplan);
-	cscan->scan.scanrelid = 0;	/* Indicate this is not a real relation we are
-								 * scanning */
+	cscan->scan.scanrelid = 0; /* Indicate this is not a real relation we are
+				    * scanning */
 
 	/* Copy costs from the original plan */
 	cscan->scan.plan.startup_cost = subplan->startup_cost;
@@ -144,7 +146,8 @@ chunk_dispatch_plan_create(Plan *subplan, Index hypertable_rti, Oid hypertable_r
 	 * original target list
 	 */
 	rel = relation_open(hypertable_relid, AccessShareLock);
-	cscan->scan.plan.targetlist = build_customscan_targetlist(rel, subplan->targetlist);
+	cscan->scan.plan.targetlist =
+	    build_customscan_targetlist(rel, subplan->targetlist);
 	RelationClose(rel);
 
 	/*
