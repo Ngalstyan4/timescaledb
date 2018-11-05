@@ -99,7 +99,7 @@ CREATE OR REPLACE FUNCTION show_chunks(
     hypertable  REGCLASS = NULL,
     older_than "any" = NULL,
     newer_than "any" = NULL
-) RETURNS SETOF REGCLASS AS '@MODULE_PATHNAME@', 'chunk_show_chunks'
+) RETURNS SETOF REGCLASS AS '@MODULE_PATHNAME@', 'ts_chunk_show_chunks'
 LANGUAGE C STABLE PARALLEL SAFE;
 
 -- Add a dimension (of partitioning) to a hypertable

@@ -51,7 +51,7 @@
 #include "cache.h"
 
 #define CHUNKS_DEFAULT_CAPACITY 4
-TS_FUNCTION_INFO_V1(chunk_show_chunks);
+TS_FUNCTION_INFO_V1(ts_chunk_show_chunks);
 
 typedef bool (*on_chunk_func) (ChunkScanCtx *ctx, Chunk *chunk);
 typedef struct Chunks
@@ -1107,7 +1107,7 @@ chunk_find_all_oids(Hyperspace *hs, List *dimension_vecs, LOCKMODE lockmode)
  * show_chunk_impl is used by drop_chunks and export_chunks
  */
 Datum
-chunk_show_chunks(PG_FUNCTION_ARGS)
+ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	char	   *caller_name;

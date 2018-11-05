@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.show_chunks_impl(
     older_than "any" = NULL,
     newer_than "any" = NULL,
     caller_name NAME = NULL
-) RETURNS SETOF REGCLASS AS '@MODULE_PATHNAME@', 'chunk_show_chunks'
+) RETURNS SETOF REGCLASS AS '@MODULE_PATHNAME@', 'ts_chunk_show_chunks'
 LANGUAGE C STABLE PARALLEL SAFE;
 
 -- Drop chunks older than the given timestamp. If a hypertable name is given,
