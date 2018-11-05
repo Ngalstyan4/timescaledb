@@ -1308,6 +1308,8 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 			}
 		}
 		cache_release(hypertable_cache);
+
+		/* There are no hypertables in the database so return 0 rows */
 		if (NULL == chunks)
 		{
 			MemoryContext oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
