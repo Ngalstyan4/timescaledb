@@ -15,11 +15,6 @@
 
 
 extern bool type_is_int8_binary_compatible(Oid sourcetype);
-#include "compat.h"
-
-#if PG96
-extern int	oid_cmp(const void *p1, const void *p2);
-#endif
 
 /*
  * Convert a column value into the internal time representation.
