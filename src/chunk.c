@@ -1058,6 +1058,74 @@ chunks_find_all_in_range_limit(Hyperspace *hs,
 	return ctx.data;
 }
 
+static Chunks *
+chunks_find_all_in_range_limit_typecheck_wrapper(Hyperspace *hs,
+												 Dimension *time_dim,
+												 Datum older_than_datum,
+												 Oid older_than_type,
+												 Datum newer_than_datum,
+												 Oid newer_than_type,
+												 int limit,
+												 MemoryContext multi_call_memory_ctx,
+												 char *caller_name)
+{
+	Chunks	   *chunks_added = NULL;
+	int64		older_than = -1;
+	int64		newer_than = -1;
+
+	StrategyNumber start_strategy = InvalidStrategy;
+	StrategyNumber end_strategy = InvalidStrategy;
+
+	MemoryContext oldcontext;
+
+
+	if (time_dim == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("no time dimension found")
+				 ));
+
+	if (older_than_type != InvalidOid)
+	{
+		dimension_open_typecheck(older_than_type, time_dim->fd.column_type, caller_name);
+		if (older_than_type == INTERVALOID)
+			older_than = interval_from_now_to_internal(older_than_datum, time_dim->fd.column_type);
+		else
+			older_than = time_value_to_internal(older_than_datum, older_than_type, false);
+		end_strategy = BTLessStrategyNumber;
+	}
+
+	if (newer_than_type != InvalidOid)
+	{
+		dimension_open_typecheck(newer_than_type, time_dim->fd.column_type, caller_name);
+		if (newer_than_type == INTERVALOID)
+			newer_than = interval_from_now_to_internal(newer_than_datum, time_dim->fd.column_type);
+		else
+			newer_than = time_value_to_internal(newer_than_datum, newer_than_type, false);
+		start_strategy = BTGreaterEqualStrategyNumber;
+	}
+
+	if (older_than_type != InvalidOid && newer_than_type != InvalidOid && older_than < newer_than)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("When both older_than and newer_than are specified, "
+						"older_than must come after newer_than")
+				 ));
+
+	oldcontext = MemoryContextSwitchTo(multi_call_memory_ctx);
+	chunks_added = chunks_find_all_in_range_limit(
+												  hs,
+												  time_dim,
+												  start_strategy,
+												  newer_than,
+												  end_strategy,
+												  older_than,
+												  limit);
+	MemoryContextSwitchTo(oldcontext);
+
+	return chunks_added;
+}
+
 static bool
 append_chunk_oid(ChunkScanCtx *scanctx, Chunk *chunk)
 {
@@ -1118,10 +1186,10 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		MemoryContext oldcontext;
 		Cache	   *hypertable_cache;
 		Hypertable *ht;
 		Dimension  *time_dim;
+		Oid			time_dim_type = InvalidOid;
 
 		/*
 		 * contains the list of hypertables which need to be considred. this
@@ -1134,10 +1202,7 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 		Chunks	   *chunks_added = NULL;
 		ListCell   *lc;
 
-		Oid			time_dim_type = InvalidOid;
 		Oid			table_relid = PG_ARGISNULL(0) ? InvalidOid : PG_GETARG_OID(0);
-		int64		older_than = -1;
-		int64		newer_than = -1;
 		Datum		older_than_datum = PG_GETARG_DATUM(1);
 		Datum		newer_than_datum = PG_GETARG_DATUM(2);
 
@@ -1147,9 +1212,6 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 		 */
 		Oid			older_than_type = PG_ARGISNULL(1) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 1);
 		Oid			newer_than_type = PG_ARGISNULL(2) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 2);
-
-		StrategyNumber start_strategy = InvalidStrategy;
-		StrategyNumber end_strategy = InvalidStrategy;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 
@@ -1195,11 +1257,7 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 			ht = lfirst(lc);
 
 			time_dim = hyperspace_get_open_dimension(ht->space, 0);
-			if (time_dim == NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("no hypertables found")
-						 ));
+
 			if (time_dim_type == InvalidOid)
 				time_dim_type = time_dim->fd.column_type;
 
@@ -1211,7 +1269,8 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 			 * whenever there is any time dimension constraint given as an
 			 * argument (older_than or newer_than) we make sure all
 			 * hypertables have the time dimension type of the given type or
-			 * through an error.
+			 * through an error. This check is done accross hypertables that
+			 * is why it is not in the helper function below.
 			 */
 			if (time_dim_type != time_dim->fd.column_type &&
 				(older_than_type != InvalidOid || newer_than_type != InvalidOid))
@@ -1222,49 +1281,40 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 								caller_name)
 						 ));
 
-			if (older_than_type != InvalidOid)
-			{
-				dimension_open_typecheck(older_than_type, time_dim->fd.column_type, caller_name);
-				if (older_than_type == INTERVALOID)
-					older_than = interval_from_now_to_internal(older_than_datum, time_dim->fd.column_type);
-				else
-					older_than = time_value_to_internal(older_than_datum, older_than_type, false);
-				end_strategy = BTLessStrategyNumber;
-			}
+			chunks_added = chunks_find_all_in_range_limit_typecheck_wrapper(ht->space,
+																			time_dim,
+																			older_than_datum,
+																			older_than_type,
+																			newer_than_datum,
+																			newer_than_type,
+																			-1,
+																			funcctx->multi_call_memory_ctx,
+																			caller_name);
 
-			if (newer_than_type != InvalidOid)
-			{
-				dimension_open_typecheck(newer_than_type, time_dim->fd.column_type, caller_name);
-				if (newer_than_type == INTERVALOID)
-					newer_than = interval_from_now_to_internal(newer_than_datum, time_dim->fd.column_type);
-				else
-					newer_than = time_value_to_internal(newer_than_datum, newer_than_type, false);
-				start_strategy = BTGreaterEqualStrategyNumber;
-			}
-
-			if (older_than_type != InvalidOid && newer_than_type != InvalidOid && older_than < newer_than)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("When both older_than and newer_than are specified, "
-								"older_than must come after newer_than")
-						 ));
-
-			oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-			chunks_added = chunks_find_all_in_range_limit(
-														  ht->space,
-														  time_dim,
-														  start_strategy,
-														  newer_than,
-														  end_strategy,
-														  older_than,
-														  -1);
 			if (NULL == chunks)
+			{
 				chunks = chunks_added;
+			}
 			else
+			{
+				/*
+				 * chunks_addall uses repalloc and this switch makes sure the
+				 * additional memory is allocated in the correct location
+				 */
+				MemoryContext oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
 				chunks = chunks_addall(chunks, chunks_added);
-			MemoryContextSwitchTo(oldcontext);
+				MemoryContextSwitchTo(oldcontext);
+			}
 		}
 		cache_release(hypertable_cache);
+		if (NULL == chunks)
+		{
+			MemoryContext oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+			chunks = chunks_alloc(0);
+			MemoryContextSwitchTo(oldcontext);
+		}
 
 		chunks_sort(chunks);
 		funcctx->user_fctx = chunks;
