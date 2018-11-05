@@ -74,7 +74,7 @@ extern Chunk *chunk_create(Hypertable *ht, Point *p, const char *schema, const c
 extern Chunk *chunk_create_stub(int32 id, int16 num_constraints);
 extern void chunk_free(Chunk *chunk);
 extern Chunk *chunk_find(Hyperspace *hs, Point *p);
-extern Chunks *chunks_find_all_in_range_limit(Hyperspace *hs, StrategyNumber start_strategy, int64 start_value, StrategyNumber end_strategy, int64 end_value, int limit);
+extern Chunks *chunks_find_all_in_range_limit(Hyperspace *hs, Dimension *time_dim, StrategyNumber start_strategy, int64 start_value, StrategyNumber end_strategy, int64 end_value, int limit);
 extern List *chunk_find_all_oids(Hyperspace *hs, List *dimension_vecs, LOCKMODE lockmode);
 extern Chunk *chunk_copy(Chunk *chunk);
 extern Chunk *chunk_get_by_name_with_memory_context(const char *schema_name, const char *table_name, int16 num_constraints, MemoryContext mctx, bool fail_if_not_found);

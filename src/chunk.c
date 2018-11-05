@@ -1016,15 +1016,19 @@ chunk_find(Hyperspace *hs, Point *p)
  * elements(dimension slices) calculated by given range constraints.
 */
 Chunks *
-chunks_find_all_in_range_limit(Hyperspace *hs, StrategyNumber start_strategy, int64 start_value, StrategyNumber end_strategy, int64 end_value, int limit)
+chunks_find_all_in_range_limit(Hyperspace *hs,
+							   Dimension *time_dim,
+							   StrategyNumber start_strategy,
+							   int64 start_value,
+							   StrategyNumber end_strategy,
+							   int64 end_value,
+							   int limit)
 {
 	ChunkScanCtx ctx;
 	DimensionVec *slices;
-	Dimension  *time_dim;
 
 	Assert(hs != NULL);
 
-	time_dim = hyperspace_get_open_dimension(hs, 0);
 	/* must have been checked earlier that this is the case */
 	Assert(time_dim != NULL);
 
@@ -1115,8 +1119,6 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
-
-		/* create a function context for cross-call persistence */
 		Cache	   *hypertable_cache;
 		Hypertable *ht;
 		Dimension  *time_dim;
@@ -1250,6 +1252,7 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 			oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 			chunks_added = chunks_find_all_in_range_limit(
 														  ht->space,
+														  time_dim,
 														  start_strategy,
 														  newer_than,
 														  end_strategy,
