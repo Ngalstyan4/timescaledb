@@ -49,23 +49,15 @@
 #include "utils.h"
 #include "hypertable_cache.h"
 #include "cache.h"
-
-#define CHUNKS_DEFAULT_CAPACITY 4
 TS_FUNCTION_INFO_V1(ts_chunk_show_chunks);
 
 typedef bool (*on_chunk_func) (ChunkScanCtx *ctx, Chunk *chunk);
-typedef struct Chunks
-{
-	int			capacity;
-	int			num_chunks;
-	Chunk	   *chunks;
-} Chunks;
-
 static void chunk_scan_ctx_init(ChunkScanCtx *ctx, Hyperspace *hs, Point *p);
 static void chunk_scan_ctx_destroy(ChunkScanCtx *ctx);
 static void chunk_collision_scan(ChunkScanCtx *scanctx, Hypercube *cube);
 static int	chunk_scan_ctx_foreach_chunk(ChunkScanCtx *ctx, on_chunk_func on_chunk, uint16 limit);
 static Datum chunks_return_srf(FunctionCallInfo fcinfo);
+static int	chunk_cmp(const void *ch1, const void *ch2);
 
 static void
 chunk_insert_relation(Relation rel, Chunk *chunk)
@@ -920,7 +912,8 @@ static bool
 chunk_scan_context_add_chunk(ChunkScanCtx *scanctx, Chunk *chunk)
 {
 	chunk_fill_stub(chunk, false);
-	chunks_add(scanctx->data, chunk);
+	*(Chunk **) scanctx->data = chunk;
+	scanctx->data = (Chunk **) scanctx->data + 1;
 	return true;
 }
 
@@ -933,21 +926,6 @@ chunk_scan_ctx_get_chunk(ChunkScanCtx *ctx)
 	ctx->data = NULL;
 
 	chunk_scan_ctx_foreach_chunk(ctx, set_complete_chunk, 1);
-
-	return ctx->data;
-}
-
-/* Gets all the chunks from the given scan context. Used for time constraint
- * elimination and that is why we don't care about constraints in
- * other dimensions.
- * Returns NIL if no chunks were found. Returns the list of Chunk* objects
- * otherwise.
- */
-static List *
-chunk_scan_ctx_get_all_chunks(ChunkScanCtx *ctx)
-{
-	ctx->data = chunks_alloc(CHUNKS_DEFAULT_CAPACITY);
-	chunk_scan_ctx_foreach_chunk(ctx, chunk_scan_context_add_chunk, -1);
 
 	return ctx->data;
 }
@@ -1013,18 +991,20 @@ chunk_find(Hyperspace *hs, Point *p)
 
 /*
  * Find all the chunks in hyperspace that include
- * elements(dimension slices) calculated by given range constraints.
+ * elements (dimension slices) calculated by given range constraints and return the corresponding
+ * ChunkScanCxt. It is the caller's responsibility to destroy this context after usage.
 */
-Chunks *
+static ChunkScanCtx *
 chunks_find_all_in_range_limit(Hyperspace *hs,
 							   Dimension *time_dim,
 							   StrategyNumber start_strategy,
 							   int64 start_value,
 							   StrategyNumber end_strategy,
 							   int64 end_value,
-							   int limit)
+							   int limit,
+							   long *num_found)
 {
-	ChunkScanCtx ctx;
+	ChunkScanCtx *ctx = palloc(sizeof(ChunkScanCtx));
 	DimensionVec *slices;
 
 	Assert(hs != NULL);
@@ -1041,35 +1021,31 @@ chunks_find_all_in_range_limit(Hyperspace *hs,
 											  limit);
 
 	/* The scan context will keep the state accumulated during the scan */
-	chunk_scan_ctx_init(&ctx, hs, NULL);
+	chunk_scan_ctx_init(ctx, hs, NULL);
 
 	/* No abort when the first chunk is found */
-	ctx.early_abort = false;
+	ctx->early_abort = false;
 
 	/* Scan for chunks that are in range */
-	dimension_slice_and_chunk_constraint_join(&ctx, slices);
+	dimension_slice_and_chunk_constraint_join(ctx, slices);
 
-	/* Get all the chunks from the context */
-	chunk_scan_ctx_get_all_chunks(&ctx);
-
-	/* only affects ctx.htab */
-	chunk_scan_ctx_destroy(&ctx);
-
-	return ctx.data;
+	*num_found += hash_get_num_entries(ctx->htab);
+	return ctx;
 }
 
-static Chunks *
-chunks_find_all_in_range_limit_typecheck_wrapper(Hyperspace *hs,
-												 Dimension *time_dim,
-												 Datum older_than_datum,
-												 Oid older_than_type,
-												 Datum newer_than_datum,
-												 Oid newer_than_type,
-												 int limit,
-												 MemoryContext multi_call_memory_ctx,
-												 char *caller_name)
+static ChunkScanCtx *
+chunks_typecheck_and_find_all_in_range_limit(Hyperspace *hs,
+											 Dimension *time_dim,
+											 Datum older_than_datum,
+											 Oid older_than_type,
+											 Datum newer_than_datum,
+											 Oid newer_than_type,
+											 int limit,
+											 MemoryContext multi_call_memory_ctx,
+											 char *caller_name,
+											 long *num_found)
 {
-	Chunks	   *chunks_added = NULL;
+	ChunkScanCtx *chunk_ctx = NULL;
 	int64		older_than = -1;
 	int64		newer_than = -1;
 
@@ -1113,17 +1089,18 @@ chunks_find_all_in_range_limit_typecheck_wrapper(Hyperspace *hs,
 				 ));
 
 	oldcontext = MemoryContextSwitchTo(multi_call_memory_ctx);
-	chunks_added = chunks_find_all_in_range_limit(
-												  hs,
-												  time_dim,
-												  start_strategy,
-												  newer_than,
-												  end_strategy,
-												  older_than,
-												  limit);
+	chunk_ctx = chunks_find_all_in_range_limit(
+											   hs,
+											   time_dim,
+											   start_strategy,
+											   newer_than,
+											   end_strategy,
+											   older_than,
+											   limit,
+											   num_found);
 	MemoryContextSwitchTo(oldcontext);
 
-	return chunks_added;
+	return chunk_ctx;
 }
 
 static bool
@@ -1184,145 +1161,168 @@ ts_chunk_show_chunks(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	char	   *caller_name;
 
-	if (SRF_IS_FIRSTCALL())
+	Cache	   *hypertable_cache;
+	Hypertable *ht;
+	Dimension  *time_dim;
+	Oid			time_dim_type = InvalidOid;
+
+	/*
+	 * contains the list of hypertables which need to be considred. this is a
+	 * list containing a single hypertable if PG_ARGISNULL(0) is false.
+	 * Otherwise, it will have the list of all hypertables in the system
+	 */
+	List	   *hypertables = NIL;
+	ListCell   *lc;
+	int			ht_index = 0;
+	long		num_chunks = 0;
+	MemoryContext oldcontext;
+	ChunkScanCtx **ctxs;
+
+
+	Oid			table_relid = PG_ARGISNULL(0) ? InvalidOid : PG_GETARG_OID(0);
+	Datum		older_than_datum = PG_GETARG_DATUM(1);
+	Datum		newer_than_datum = PG_GETARG_DATUM(2);
+
+	/*
+	 * get_fn_expr_argtype defaults to UNKNOWNOID if argument is NULL but
+	 * making it InvalidOid makes the logic simpler later
+	 */
+	Oid			older_than_type = PG_ARGISNULL(1) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 1);
+	Oid			newer_than_type = PG_ARGISNULL(2) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 2);
+
+	/*
+	 * chunks_return_srf is called even when it is not the first call but only
+	 * after doing some computation first
+	 */
+	if (!SRF_IS_FIRSTCALL())
+		return chunks_return_srf(fcinfo);
+
+	funcctx = SRF_FIRSTCALL_INIT();
+
+	caller_name = PG_NARGS() <= 3 ? "show_chunks" : NameStr(*PG_GETARG_NAME(3));
+
+	if (PG_NARGS() > 3 && PG_ARGISNULL(3))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("When calling the internal function for show_chunks "
+						"caller_name cannot be null")
+				 ));
+
+	if (older_than_type != InvalidOid &&
+		newer_than_type != InvalidOid &&
+		older_than_type != newer_than_type)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("older_than_type and newer_than_type should have the same type")
+				 ));
+
+	/*
+	 * Cache outside the if block to make sure cached hypertable entry
+	 * returned will still be valid in foreach block below
+	 */
+	hypertable_cache = hypertable_cache_pin();
+	if (PG_ARGISNULL(0))
 	{
-		Cache	   *hypertable_cache;
-		Hypertable *ht;
-		Dimension  *time_dim;
-		Oid			time_dim_type = InvalidOid;
-
-		/*
-		 * contains the list of hypertables which need to be considred. this
-		 * is a list containing a single hypertable if PG_ARGISNULL(0) is
-		 * false. Otherwise, it will have the list of all hypertables in the
-		 * system
-		 */
-		List	   *hypertables = NIL;
-		Chunks	   *chunks = NULL;
-		Chunks	   *chunks_added = NULL;
-		ListCell   *lc;
-
-		Oid			table_relid = PG_ARGISNULL(0) ? InvalidOid : PG_GETARG_OID(0);
-		Datum		older_than_datum = PG_GETARG_DATUM(1);
-		Datum		newer_than_datum = PG_GETARG_DATUM(2);
-
-		/*
-		 * get_fn_expr_argtype defaults to UNKNOWNOID if argument is NULL but
-		 * making it InvalidOid makes the logic simpler later
-		 */
-		Oid			older_than_type = PG_ARGISNULL(1) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 1);
-		Oid			newer_than_type = PG_ARGISNULL(2) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 2);
-
-		funcctx = SRF_FIRSTCALL_INIT();
-
-		caller_name = PG_NARGS() <= 3 ? "show_chunks" : NameStr(*PG_GETARG_NAME(3));
-
-		if (PG_NARGS() > 3 && PG_ARGISNULL(3))
+		hypertables = hypertable_get_all();
+	}
+	else
+	{
+		ht = hypertable_cache_get_entry(hypertable_cache, table_relid);
+		if (!ht)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("When calling the internal function for show_chunks "
-							"caller_name cannot be null")
+					 errmsg("table \"%s\" does not exist or is not a hypertable",
+							get_rel_name(table_relid))
 					 ));
-
-		if (older_than_type != InvalidOid &&
-			newer_than_type != InvalidOid &&
-			older_than_type != newer_than_type)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("older_than_type and newer_than_type should have the same type")
-					 ));
-
-		/*
-		 * Cache outside the if block to make sure cached hypertable entry
-		 * returned will still be valid in foreach block below
-		 */
-		hypertable_cache = hypertable_cache_pin();
-		if (PG_ARGISNULL(0))
-		{
-			hypertables = hypertable_get_all();
-		}
-		else
-		{
-			ht = hypertable_cache_get_entry(hypertable_cache, table_relid);
-			if (!ht)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("The given table does not exist or is not a hypertable")
-						 ));
-			hypertables = list_make1(ht);
-		}
-
-		foreach(lc, hypertables)
-		{
-			ht = lfirst(lc);
-
-			time_dim = hyperspace_get_open_dimension(ht->space, 0);
-
-			if (time_dim_type == InvalidOid)
-				time_dim_type = time_dim->fd.column_type;
-
-			/*
-			 * Even though internally all time columns are represented as
-			 * bigints, it is locally unclear what set of chunks should be
-			 * returned if there are multiple tables on the system some of
-			 * which care about timestamp when others do not. That is why,
-			 * whenever there is any time dimension constraint given as an
-			 * argument (older_than or newer_than) we make sure all
-			 * hypertables have the time dimension type of the given type or
-			 * through an error. This check is done accross hypertables that
-			 * is why it is not in the helper function below.
-			 */
-			if (time_dim_type != time_dim->fd.column_type &&
-				(older_than_type != InvalidOid || newer_than_type != InvalidOid))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("cannot call \"%s\" on all hypertables "
-								"when all hypertables do not have the same time dimension type",
-								caller_name)
-						 ));
-
-			chunks_added = chunks_find_all_in_range_limit_typecheck_wrapper(ht->space,
-																			time_dim,
-																			older_than_datum,
-																			older_than_type,
-																			newer_than_datum,
-																			newer_than_type,
-																			-1,
-																			funcctx->multi_call_memory_ctx,
-																			caller_name);
-
-			if (NULL == chunks)
-			{
-				chunks = chunks_added;
-			}
-			else
-			{
-				/*
-				 * chunks_addall uses repalloc and this switch makes sure the
-				 * additional memory is allocated in the correct location
-				 */
-				MemoryContext oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-				chunks = chunks_addall(chunks, chunks_added);
-				MemoryContextSwitchTo(oldcontext);
-			}
-		}
-		cache_release(hypertable_cache);
-
-		/* There are no hypertables in the database so return 0 rows */
-		if (NULL == chunks)
-		{
-			MemoryContext oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-			chunks = chunks_alloc(0);
-			MemoryContextSwitchTo(oldcontext);
-		}
-
-		chunks_sort(chunks);
-		funcctx->user_fctx = chunks;
+		hypertables = list_make1(ht);
 	}
 
+	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+	ctxs = palloc(sizeof(ChunkScanCtx *) * list_length(hypertables));
+	MemoryContextSwitchTo(oldcontext);
+	foreach(lc, hypertables)
+	{
+		ht = lfirst(lc);
+
+		time_dim = hyperspace_get_open_dimension(ht->space, 0);
+
+		if (time_dim_type == InvalidOid)
+			time_dim_type = time_dim->fd.column_type;
+
+		/*
+		 * Even though internally all time columns are represented as bigints,
+		 * it is locally unclear what set of chunks should be returned if
+		 * there are multiple tables on the system some of which care about
+		 * timestamp when others do not. That is why, whenever there is any
+		 * time dimension constraint given as an argument (older_than or
+		 * newer_than) we make sure all hypertables have the time dimension
+		 * type of the given type or through an error. This check is done
+		 * accross hypertables that is why it is not in the helper function
+		 * below.
+		 */
+		if (time_dim_type != time_dim->fd.column_type &&
+			(older_than_type != InvalidOid || newer_than_type != InvalidOid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("cannot call \"%s\" on all hypertables "
+							"when all hypertables do not have the same time dimension type",
+							caller_name)
+					 ));
+
+		ctxs[ht_index++] = chunks_typecheck_and_find_all_in_range_limit(ht->space,
+																		time_dim,
+																		older_than_datum,
+																		older_than_type,
+																		newer_than_datum,
+																		newer_than_type,
+																		-1,
+																		funcctx->multi_call_memory_ctx,
+																		caller_name,
+																		&num_chunks);
+
+	}
+	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+	/* Q:: two options here: */
+	/* have chunks to be chunks and copy chunk structs over */
+	/* have chunks be Oids or a new lighter datatype */
+	/* First one has more overhead but makes ordering the results much easier */
+	/* as we can use hypertable d and table id. */
+
+	/*
+	 * The first one is more effient and makes sure we do not deal with mem
+	 * context switches that much
+	 */
+
+	/*
+	 * num_chunks can safely be 0 as palloc protects against unportable
+	 * behavior.
+	 */
+	Chunk	  **chunks = palloc(sizeof(Chunk *) * num_chunks);
+	Chunk	  **current = chunks;
+
+	MemoryContextSwitchTo(oldcontext);
+	for (int i = 0; i < list_length(hypertables); i++)
+	{
+		/* Get all the chunks from the context */
+		ctxs[i]->data = current;
+		chunk_scan_ctx_foreach_chunk(ctxs[i], chunk_scan_context_add_chunk, -1);
+		qsort(current, (Chunk **) ctxs[i]->data - current, sizeof(Chunk *), chunk_cmp);
+/* todo chunk.c:1302 */
+		current = ctxs[i]->data;
+
+		/*
+		 * only affects ctx.htab Got all the chunk already so can now safely
+		 * destroy the context
+		 */
+		chunk_scan_ctx_destroy(ctxs[i]);
+	}
+
+	qsort(chunks, num_chunks, sizeof(Chunk *), chunk_cmp);
+	funcctx->user_fctx = chunks;
+	funcctx->max_calls = num_chunks;
+	cache_release(hypertable_cache);
 	return chunks_return_srf(fcinfo);
+
 }
 
 Chunk *
@@ -1768,93 +1768,23 @@ chunks_rename_schema_name(char *old_schema, char *new_schema)
 
 	scanner_scan(&scanctx);
 }
-Chunks *
-chunks_alloc(int size)
-{
-	Chunks	   *chunks = palloc(sizeof(Chunks));
-
-	chunks->num_chunks = 0;
-	chunks->capacity = size;
-	chunks->chunks = palloc(sizeof(Chunk) * chunks->capacity);
-
-	return chunks;
-}
-
-void
-chunks_free(Chunks *chunks)
-{
-	pfree(chunks->chunks);
-	pfree(chunks);
-}
-
-static void
-chunks_expand(Chunks *chunks, int exp_factor)
-{
-	chunks->capacity *= exp_factor;
-	chunks->chunks = repalloc(chunks->chunks, sizeof(Chunk) * chunks->capacity);
-}
-
-void
-chunks_add(Chunks *chunks, Chunk *chunk_src)
-{
-	Chunk	   *chunk_dst;
-
-	if (chunks->num_chunks == chunks->capacity)
-		chunks_expand(chunks, 2);
-
-	chunk_dst = &chunks->chunks[chunks->num_chunks++];
-	memcpy(chunk_dst, chunk_src, sizeof(Chunk));
-}
-
-int
-chunks_length(Chunks *chunks)
-{
-	return chunks->num_chunks;
-}
-
-Chunk *
-chunks_get_nth(Chunks *chunks, int n)
-{
-	Assert(0 <= n && n < chunks->num_chunks);
-	return &chunks->chunks[n];
-}
 
 static int
 chunk_cmp(const void *ch1, const void *ch2)
 {
-	Chunk		v1 = *((const Chunk *) ch1);
-	Chunk		v2 = *((const Chunk *) ch2);
+	const Chunk *v1 = *((const Chunk **) ch1);
+	const Chunk *v2 = *((const Chunk **) ch2);
 
-	if (v1.fd.hypertable_id < v2.fd.hypertable_id)
+	if (v1->fd.hypertable_id < v2->fd.hypertable_id)
 		return -1;
-	if (v1.fd.hypertable_id > v2.fd.hypertable_id)
+	if (v1->fd.hypertable_id > v2->fd.hypertable_id)
 		return 1;
-	if (v1.table_id < v2.table_id)
+	if (v1->table_id < v2->table_id)
 		return -1;
-	if (v1.table_id > v2.table_id)
+	if (v1->table_id > v2->table_id)
 		return 1;
 	return 0;
 }
-
-void
-chunks_sort(Chunks *chunks)
-{
-	qsort(chunks->chunks, chunks->num_chunks, sizeof(Chunk), chunk_cmp);
-}
-
-Chunks *
-chunks_addall(Chunks *src, Chunks *tbadded)
-{
-	if (src->num_chunks + tbadded->num_chunks > src->capacity)
-	{
-		src->capacity += tbadded->capacity;
-		src->chunks = repalloc(src->chunks, sizeof(Chunk) * src->capacity);
-	}
-	memcpy(src->chunks + src->num_chunks, tbadded->chunks, sizeof(Chunk) * tbadded->num_chunks);
-	src->num_chunks += tbadded->num_chunks;
-	return src;
-}
-
 
 /*
  * This is a helper function that takes a set returning function context and as
@@ -1866,9 +1796,9 @@ static Datum
 chunks_return_srf(FunctionCallInfo fcinfo)
 {
 	FuncCallContext *funcctx;
-	int			call_cntr;
+	uint64		call_cntr;
 	TupleDesc	tupdesc;
-	Chunks	   *result_set;
+	Chunk	  **result_set;
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
@@ -1888,19 +1818,11 @@ chunks_return_srf(FunctionCallInfo fcinfo)
 	funcctx = SRF_PERCALL_SETUP();
 
 	call_cntr = funcctx->call_cntr;
-	result_set = (Chunks *) funcctx->user_fctx;
+	result_set = (Chunk **) funcctx->user_fctx;
 
 	/* do when there is more left to send */
-	if (call_cntr < chunks_length(result_set))
-	{
-		Chunk	   *chunk;
-
-		chunk = chunks_get_nth(result_set, call_cntr);
-
-		SRF_RETURN_NEXT(funcctx, ObjectIdGetDatum(chunk->table_id));
-	}
+	if (call_cntr < funcctx->max_calls)
+		SRF_RETURN_NEXT(funcctx, result_set[call_cntr]->table_id);
 	else						/* do when there is no more left */
-	{
 		SRF_RETURN_DONE(funcctx);
-	}
 }
