@@ -167,7 +167,7 @@ gapfill_interpolate_calculate(GapFillInterpolateColumnState *column, GapFillStat
 	y0 = column->prev.value;
 	y1 = column->next.value;
 
-	x = gapfill_datum_get_internal(time, state->gapfill_typid);
+	x = gapfill_datum_get_internal(Int64GetDatum(time), state->gapfill_typid);
 	x0 = gapfill_datum_get_internal(column->prev.time, state->gapfill_typid);
 	x1 = gapfill_datum_get_internal(column->next.time, state->gapfill_typid);
 
