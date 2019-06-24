@@ -97,6 +97,7 @@ typedef struct DimensionInfo
 	int64 interval;
 	int32 num_slices;
 	regproc partitioning_func;
+	regproc integer_now_func;
 	bool if_not_exists;
 	bool skip;
 	bool set_not_null;
