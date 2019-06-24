@@ -587,6 +587,9 @@ dimension_insert_relation(Relation rel, int32 hypertable_id, Name colname, Oid c
 		nulls[AttrNumberGetAttrOffset(Anum_dimension_num_slices)] = true;
 	}
 
+	nulls[AttrNumberGetAttrOffset(Anum_dimension_integer_now_func_schema)] = true;
+	nulls[AttrNumberGetAttrOffset(Anum_dimension_integer_now_func)] = true;
+
 	ts_catalog_database_info_become_owner(ts_catalog_database_info_get(), &sec_ctx);
 	dimension_id = Int32GetDatum(ts_catalog_table_next_seq_id(ts_catalog_get(), DIMENSION));
 	values[AttrNumberGetAttrOffset(Anum_dimension_id)] = dimension_id;
