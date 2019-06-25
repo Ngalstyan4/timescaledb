@@ -229,6 +229,41 @@ select remove_drop_chunks_policy('test_table');
  
 (1 row)
 
+-- Test set_integer_now_func and add_drop_chunks_policy with
+-- hypertables that have integer time dimension
+\set ON_ERROR_STOP 0
+select set_integer_now_func('test_table', 42);
+ERROR:  integer_now_func can only be set for hypertables that have integer time dimensions
+select set_integer_now_func('test_table', 'set_integer_now_func');
+ERROR:  integer_now_func can only be set for hypertables that have integer time dimensions
+select set_integer_now_func('test_table_int', 'set_integer_now_func');
+ERROR:  integer_now_func must take no arguments and it must be STABLE or IMMUTABLE
+\set ON_ERROR_STOP 1
+select * from _timescaledb_catalog.dimension;
+ id | hypertable_id | column_name |       column_type        | aligned | num_slices | partitioning_func_schema | partitioning_func | integer_now_func_schema | integer_now_func | interval_length 
+----+---------------+-------------+--------------------------+---------+------------+--------------------------+-------------------+-------------------------+------------------+-----------------
+  1 |             1 | time        | timestamp with time zone | t       |            |                          |                   |                         |                  |    604800000000
+  2 |             2 | time        | bigint                   | t       |            |                          |                   |                         |                  |               1
+(2 rows)
+
+create or replace function dummy_now() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 1::BIGINT';
+select set_integer_now_func('test_table_int', 'dummy_now');
+ set_integer_now_func 
+----------------------
+ 
+(1 row)
+
+\set ON_ERROR_STOP 0
+select set_integer_now_func('test_table_int', 'dummy_now');
+ERROR:  integer_now_func is already set for hypertable "test_table_int"
+\set ON_ERROR_STOP 1
+select * from _timescaledb_catalog.dimension;
+ id | hypertable_id | column_name |       column_type        | aligned | num_slices | partitioning_func_schema | partitioning_func | integer_now_func_schema | integer_now_func | interval_length 
+----+---------------+-------------+--------------------------+---------+------------+--------------------------+-------------------+-------------------------+------------------+-----------------
+  1 |             1 | time        | timestamp with time zone | t       |            |                          |                   |                         |                  |    604800000000
+  2 |             2 | time        | bigint                   | t       |            |                          |                   | public                  | dummy_now        |               1
+(2 rows)
+
 select * from _timescaledb_config.bgw_policy_drop_chunks;
  job_id | hypertable_id | interval_support | older_than_interval | older_than_integer | cascade | cascade_to_materializations 
 --------+---------------+------------------+---------------------+--------------------+---------+-----------------------------

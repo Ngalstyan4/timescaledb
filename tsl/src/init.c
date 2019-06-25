@@ -61,6 +61,7 @@ CrossModuleFunctions tsl_cm_functions = {
 	.add_tsl_license_info_telemetry = tsl_telemetry_add_license_info,
 	.bgw_policy_job_execute = tsl_bgw_policy_job_execute,
 	.continuous_agg_materialize = continuous_agg_materialize,
+	.set_integer_now_func = set_integer_now_func,
 	.add_drop_chunks_policy = drop_chunks_add_policy,
 	.add_reorder_policy = reorder_add_policy,
 	.remove_drop_chunks_policy = drop_chunks_remove_policy,

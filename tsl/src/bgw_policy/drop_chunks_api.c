@@ -18,6 +18,7 @@
 #include "drop_chunks_api.h"
 #include "errors.h"
 #include "hypertable.h"
+#include "dimension.h"
 #include "license.h"
 #include "utils.h"
 
@@ -54,6 +55,93 @@
 										  Int32GetDatum(0),                                        \
 										  Float8GetDatum(0)))
 
+
+/* TODO:: Q:: These should probably be in its own file? We could also add a set_partitioning_func helper function so
+ * such functions do not have to be specified hypertable creation time
+ *  */
+
+static void ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type) {
+	HeapTuple tuple;
+	Form_pg_proc now_func;
+
+	/* this function should only be called for hypertabes with integer open time dimension */
+	Assert(IS_INTEGER_TYPE(open_dim_type));
+
+	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(now_func_oid));
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+						(errcode(ERRCODE_NO_DATA_FOUND),
+						errmsg("cache lookup failed for function %u", now_func_oid)));
+
+	now_func = (Form_pg_proc) GETSTRUCT(tuple);
+
+
+	if ((now_func->provolatile != PROVOLATILE_IMMUTABLE && now_func->provolatile != PROVOLATILE_STABLE )  || now_func->pronargs != 0)
+		//q:: todo:: do I have to ReleaseSysCache(tuple); if the next step is an error?
+		ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("integer_now_func must take no arguments and it must be STABLE or IMMUTABLE")));
+
+
+	/*TODO:: Q:: do we want to autocast among INT?OID ? types*/
+	if (now_func->prorettype != open_dim_type)
+		ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("return type of integer_now_func must be the same as "
+					"the type of the time partitioning column of the hypertable")));
+	ReleaseSysCache(tuple);
+}
+Datum set_integer_now_func(PG_FUNCTION_ARGS) {
+	Oid table_relid = PG_GETARG_OID(0);
+	Oid now_func_oid = PG_GETARG_OID(1);
+	Hypertable *hypertable;
+	Cache *hcache;
+	Dimension *open_dim;
+	Oid open_dim_type;
+
+
+	license_enforce_enterprise_enabled();
+	license_print_expiration_warning_if_needed();
+
+	hcache = ts_hypertable_cache_pin();
+	hypertable = ts_hypertable_cache_get_entry(hcache, table_relid);
+	/* First verify that the hypertable corresponds to a valid table */
+	if (hypertable == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_TS_HYPERTABLE_NOT_EXIST),
+				 errmsg("could not set integer_now function because \"%s\" is not a hypertable",
+						get_rel_name(table_relid))));
+
+	/* validate that the open dimension uses numeric type */
+	open_dim = hyperspace_get_open_dimension(hypertable->space, 0);
+
+	//todo:: Q:: should there be a way to remove the set function? or replace?
+	if (*NameStr(open_dim->fd.integer_now_func_schema) != '\0' || *NameStr(open_dim->fd.integer_now_func) != '\0')
+		ereport(ERROR,
+			(errcode(ERRCODE_DUPLICATE_OBJECT),
+				errmsg("integer_now_func is already set for hypertable \"%s\"",
+					get_rel_name(table_relid))));
+
+	open_dim_type =
+		ts_dimension_get_partition_type(open_dim);
+
+	if (!IS_INTEGER_TYPE(open_dim_type))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("integer_now_func can only be set for hypertables "
+				"that have integer time dimensions")));// <<-- time columns? open dimensions? TODO::
+
+	ts_integer_now_func_validate(now_func_oid, open_dim_type);
+	// elog(INFO, "haha %s %s", NameStr(now_func->proname), get_namespace_name(now_func->pronamespace));
+
+	// Q:: TODO:: NOTE we actually load almost all of the info about the function in validation function above
+	// and the dimension_update repeats the DB search.
+	// this is done to make the APIs simple but I could optimize it if deemed necessary
+	dimension_update(NULL, table_relid, &open_dim->fd.column_name, DIMENSION_TYPE_OPEN, NULL, NULL, &now_func_oid);
+
+	ts_cache_release(hcache);
+	PG_RETURN_NULL();
+}
 Datum
 drop_chunks_add_policy(PG_FUNCTION_ARGS)
 {

@@ -169,6 +169,10 @@ extern void ts_dimension_info_validate(DimensionInfo *info);
 extern void ts_dimension_add_from_info(DimensionInfo *info);
 extern void ts_dimensions_rename_schema_name(char *oldname, char *newname);
 
+/* TODO:: Q:: this function should probably need to be refactored if we agree it should be exposed  */
+extern TSDLLEXPORT void dimension_update(FunctionCallInfo fcinfo, Oid table_relid, Name dimname, DimensionType dimtype,
+				 Datum *interval, int16 *num_slices, Oid *integer_now_func);
+
 #define hyperspace_get_open_dimension(space, i)                                                    \
 	ts_hyperspace_get_dimension(space, DIMENSION_TYPE_OPEN, i)
 #define hyperspace_get_closed_dimension(space, i)                                                  \

@@ -10,6 +10,7 @@
 #include <postgres.h>
 
 /* User-facing API functions */
+Datum set_integer_now_func(PG_FUNCTION_ARGS);
 extern Datum drop_chunks_add_policy(PG_FUNCTION_ARGS);
 extern Datum drop_chunks_remove_policy(PG_FUNCTION_ARGS);
 

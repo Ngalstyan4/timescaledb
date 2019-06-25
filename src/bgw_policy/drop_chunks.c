@@ -24,7 +24,8 @@ bgw_policy_drop_chunks_tuple_found(TupleInfo *ti, void *const data)
 {
 	BgwPolicyDropChunks **policy = data;
 	bool isnull;
-
+	Interval* interval;
+	// todo:: q:: consider using heap_deform_tuple ??
 	*policy = MemoryContextAllocZero(ti->mctx, sizeof(BgwPolicyDropChunks));
 	(*policy)->fd.job_id = DatumGetInt32(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_job_id, ti->desc, &isnull));
 	Assert(!isnull);
@@ -32,13 +33,16 @@ bgw_policy_drop_chunks_tuple_found(TupleInfo *ti, void *const data)
 	Assert(!isnull);
 	(*policy)->fd.interval_support = DatumGetBool(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_interval_support, ti->desc, &isnull));
 	Assert(!isnull);
-	if ((*policy)->fd.interval_support) {
-		(*policy)->fd.older_than_interval = *DatumGetIntervalP(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_older_than_interval, ti->desc, &isnull));
-		Assert(!isnull);
-	} else {
+
+	interval = DatumGetIntervalP(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_older_than_interval, ti->desc, &isnull));
+	if(isnull) {
+		(*policy)->fd.interval_support = false;
 		(*policy)->fd.older_than_integer = DatumGetInt64(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_older_than_integer, ti->desc, &isnull));
-		Assert(!isnull);
+	} else {
+		(*policy)->fd.interval_support = true;
+		(*policy)->fd.older_than_interval = *interval;
 	}
+
 	(*policy)->fd.cascade = DatumGetBool(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_cascade, ti->desc, &isnull));
 	Assert(!isnull);
 	(*policy)->fd.cascade_to_materializations = DatumGetBool(heap_getattr(ti->tuple, Anum_bgw_policy_drop_chunks_cascade_to_materializations, ti->desc, &isnull));
@@ -144,7 +148,7 @@ ts_bgw_policy_drop_chunks_insert_with_relation(Relation rel, BgwPolicyDropChunks
 		nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)] = true;
 	} else {
 		values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)] =
-			IntervalPGetDatum(&policy->fd.older_than_integer);
+			Int64GetDatum(policy->fd.older_than_integer);
 		nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_interval)] = true;
 	}
 
