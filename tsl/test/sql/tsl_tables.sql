@@ -98,6 +98,31 @@ select r.job_id,r.hypertable_id,r.older_than_interval,r.cascade from _timescaled
 
 select remove_drop_chunks_policy('test_table');
 
+-- Test set_integer_now_func and add_drop_chunks_policy with
+-- hypertables that have integer time dimension
+\set ON_ERROR_STOP 0
+select set_integer_now_func('test_table', 42);
+select set_integer_now_func('test_table', 'set_integer_now_func');
+select set_integer_now_func('test_table_int', 'set_integer_now_func');
+\set ON_ERROR_STOP 1
+
+select * from _timescaledb_catalog.dimension;
+create or replace function dummy_now() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 1::BIGINT';
+create or replace function dummy_now2() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 1::BIGINT';
+
+select set_integer_now_func('test_table_int', 'dummy_now');
+
+\set ON_ERROR_STOP 0
+select set_integer_now_func('test_table_int', 'dummy_now');
+\set ON_ERROR_STOP 1
+
+select * from _timescaledb_catalog.dimension;
+select set_integer_now_func('test_table_int', 'dummy_now2', replace_if_exists => TRUE);
+select * from _timescaledb_catalog.dimension;
+
+select add_drop_chunks_policy('test_table_int', 42, true);
+
+
 select * from _timescaledb_config.bgw_policy_drop_chunks;
 select r.job_id,r.hypertable_id,r.older_than_interval,r.cascade from _timescaledb_config.bgw_policy_drop_chunks as r, _timescaledb_catalog.hypertable as h where r.hypertable_id=h.id and h.table_name='test_table';
 select remove_reorder_policy('test_table');
