@@ -65,18 +65,16 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 	Hypertable *hypertable;
 	Cache *hcache;
 	Oid ht_oid = PG_GETARG_OID(0);
-	Interval *older_than = PG_GETARG_INTERVAL_P(1);
+	Datum older_than_datum = PG_GETARG_DATUM(1);
 	bool cascade = PG_GETARG_BOOL(2);
 	bool if_not_exists = PG_GETARG_BOOL(3);
 	bool cascade_to_materializations = PG_GETARG_BOOL(4);
+	Oid older_than_type = PG_ARGISNULL(1) ? InvalidOid : get_fn_expr_argtype(fcinfo->flinfo, 1);
+	Interval *older_than_interval;
+	int64 older_than_integer;
 	Oid partitioning_type;
-
-	BgwPolicyDropChunks policy = { .fd = {
-									   .hypertable_id = ts_hypertable_relid_to_id(ht_oid),
-									   .older_than = *older_than,
-									   .cascade = cascade,
-									   .cascade_to_materializations = cascade_to_materializations,
-								   } };
+	BgwPolicyDropChunks policy;
+	Dimension *open_dim;
 
 	license_enforce_enterprise_enabled();
 	license_print_expiration_warning_if_needed();
@@ -91,11 +89,61 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 				 errmsg("could not add drop_chunks policy because \"%s\" is not a hypertable",
 						get_rel_name(ht_oid))));
 
+	/* validate that the open dimension uses a time type */
+	open_dim = hyperspace_get_open_dimension(hypertable->space, 0);
+	partitioning_type = ts_dimension_get_partition_type(open_dim);
+
+	switch (older_than_type)
+	{
+		case INTERVALOID:
+			ts_dimension_open_typecheck(INTERVALOID, partitioning_type, "add_drop_chunks_policy");
+			older_than_interval = PG_GETARG_INTERVAL_P(1);
+			older_than_integer = -1;
+			break;
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+			if (!IS_INTEGER_TYPE(partitioning_type))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("integer older_than argument can only be used with hypertables "
+								"that have integer time dimensions"))); // <<-- time columns? open
+																		// dimensions? TODO::
+
+			/* awkward way to check if a NameStr col is null or not but did not find a better API */
+			if ('\0' == *NameStr(open_dim->fd.integer_now_func) ||
+				'\0' == *NameStr(open_dim->fd.integer_now_func_schema))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("integer older_than argument can only be used with hypertables "
+								"that have integer time dimensions and when integer now function "
+								"is set"),
+						 errhint("set interger_now function for hypertable \"%s\" using "
+								 "set_integer_now_func(hypertable REGCLASS, integer_now_func "
+								 "regproc) function",
+								 get_rel_name(ht_oid))));
+			older_than_interval = NULL;
+			older_than_integer = ts_time_value_to_internal(older_than_datum, older_than_type);
+
+			break;
+		case InvalidOid:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("older_than argument to add_drop_chunks_policy cannot be NULL")));
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("older_than argument to add_drop_chunks_policy should be an interval "
+							"or an integer")));
+	}
+
 	/* Make sure that an existing policy doesn't exist on this hypertable */
 	existing = ts_bgw_policy_drop_chunks_find_by_hypertable(hypertable->fd.id);
 
 	if (existing != NULL)
 	{
+		bool same_interval;
+		bool same_integer;
 		if (!if_not_exists)
 		{
 			ts_cache_release(hcache);
@@ -105,10 +153,14 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 							get_rel_name(ht_oid))));
 		}
 
-		if (!DatumGetBool(DirectFunctionCall2(interval_eq,
-											  IntervalPGetDatum(&existing->fd.older_than),
-											  IntervalPGetDatum(older_than))) ||
-			(existing->fd.cascade != cascade) ||
+		same_interval =
+			older_than_interval == NULL ||
+			DatumGetBool(DirectFunctionCall2(interval_eq,
+											 IntervalPGetDatum(&existing->fd.older_than_interval),
+											 older_than_datum));
+		same_integer =
+			older_than_interval != NULL || older_than_integer == existing->fd.older_than_integer;
+		if (!same_interval || !same_integer || (existing->fd.cascade != cascade) ||
 			(existing->fd.cascade_to_materializations != cascade_to_materializations))
 		{
 			elog(WARNING,
@@ -126,11 +178,6 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 		return -1;
 	}
 
-	/* validate that the open dimension uses a time type */
-	partitioning_type =
-		ts_dimension_get_partition_type(hyperspace_get_open_dimension(hypertable->space, 0));
-	ts_dimension_open_typecheck(INTERVALOID, partitioning_type, "add_drop_chunks_policy");
-
 	ts_cache_release(hcache);
 
 	/* Next, insert a new job into jobs table */
@@ -143,8 +190,18 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 										DEFAULT_MAX_RETRIES,
 										DEFAULT_RETRY_PERIOD);
 
+	policy = (BgwPolicyDropChunks){ .fd = {
+										.job_id = job_id,
+										.hypertable_id = ts_hypertable_relid_to_id(ht_oid),
+										.interval_support = older_than_interval != NULL,
+										.older_than_integer = older_than_integer,
+										.cascade = cascade,
+										.cascade_to_materializations = cascade_to_materializations,
+									} };
+	if (older_than_interval != NULL)
+		policy.fd.older_than_interval = *older_than_interval;
+
 	/* Now, insert a new row in the drop_chunks args table */
-	policy.fd.job_id = job_id;
 	ts_bgw_policy_drop_chunks_insert(&policy);
 
 	PG_RETURN_INT32(job_id);
