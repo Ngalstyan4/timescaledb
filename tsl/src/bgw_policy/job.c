@@ -167,7 +167,7 @@ execute_drop_chunks_policy(int32 job_id)
 						job_id)));
 
 	ts_chunk_do_drop_chunks(ts_hypertable_id_to_relid(args->fd.hypertable_id),
-							IntervalPGetDatum(&args->fd.older_than),
+							IntervalPGetDatum(&args->fd.older_than_interval),
 							0,
 							INTERVALOID,
 							InvalidOid,

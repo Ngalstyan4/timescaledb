@@ -513,6 +513,7 @@ ts_type_is_int8_binary_compatible(Oid sourcetype)
  * Create a fresh struct pointer that will contain copied contents of the tuple.
  * Note that this function uses GETSTRUCT, which will not work correctly for tuple types
  * that might have variable lengths.
+ * Also note that the function assumes no NULLs in the tuple.
  */
 void *
 ts_create_struct_from_tuple(HeapTuple tuple, MemoryContext mctx, size_t alloc_size,
@@ -520,6 +521,8 @@ ts_create_struct_from_tuple(HeapTuple tuple, MemoryContext mctx, size_t alloc_si
 {
 	void *struct_ptr = MemoryContextAllocZero(mctx, alloc_size);
 
+	/* Make sure the function is not used when the tuple contains NULLs */
+	Assert(copy_size == tuple->t_len- tuple->t_data->t_hoff);
 	memcpy(struct_ptr, GETSTRUCT(tuple), copy_size);
 
 	return struct_ptr;
