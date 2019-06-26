@@ -13,6 +13,8 @@
 #include <miscadmin.h>
 
 #include <hypertable_cache.h>
+#include <access/xact.h>
+#include <utils/snapmgr.h>
 
 #include "bgw/job.h"
 #include "bgw_policy/drop_chunks.h"
@@ -60,7 +62,37 @@
  * helper function so such functions do not have to be specified hypertable creation time
  *  */
 
-static void
+Datum
+ts_integer_from_now_func_get_datum(int64 interval, Oid time_dim_type, Oid now_func)
+{
+	Datum now;
+
+	AssertArg(IS_INTEGER_TYPE(time_dim_type));
+
+	ts_integer_now_func_validate(now_func, time_dim_type);
+
+	// bgw luncher starts a transactions so here I can assume I am always inside a transaction
+	// right? no need for StartTransactionCommand();
+	/* functions in indexes may want a snapshot set */
+	// Q:: Why is there not one already?
+	PushActiveSnapshot(GetTransactionSnapshot());
+	now = OidFunctionCall0(now_func);
+	PopActiveSnapshot();
+
+	switch (time_dim_type)
+	{
+		case INT2OID:
+			return Int64GetDatum(DatumGetInt16(now) - interval);
+		case INT4OID:
+			return Int64GetDatum(DatumGetInt32(now) - interval);
+		case INT8OID:
+			return Int64GetDatum(DatumGetInt64(now) - interval);
+		default:
+			pg_unreachable();
+	}
+}
+
+void
 ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type)
 {
 	HeapTuple tuple;
@@ -68,6 +100,10 @@ ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type)
 
 	/* this function should only be called for hypertabes with integer open time dimension */
 	Assert(IS_INTEGER_TYPE(open_dim_type));
+
+	if (!OidIsValid(now_func_oid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION), (errmsg("invalid chunk sizing function"))));
 
 	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(now_func_oid));
 	if (!HeapTupleIsValid(tuple))
@@ -120,7 +156,6 @@ set_integer_now_func(PG_FUNCTION_ARGS)
 	/* validate that the open dimension uses numeric type */
 	open_dim = hyperspace_get_open_dimension(hypertable->space, 0);
 
-	// todo:: Q:: should there be a way to remove the set function? or replace?
 	if (!replace_if_exists)
 		if (*NameStr(open_dim->fd.integer_now_func_schema) != '\0' ||
 			*NameStr(open_dim->fd.integer_now_func) != '\0')
@@ -197,6 +232,13 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 	switch (older_than_type)
 	{
 		case INTERVALOID:
+			if (IS_INTEGER_TYPE(partitioning_type))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg(
+							 "interval older_than argument can only be used with hypertables "
+							 "that have non-integer time dimensions"))); // <<-- time columns? open
+																		 // dimensions? TODO::
 			ts_dimension_open_typecheck(INTERVALOID, partitioning_type, "add_drop_chunks_policy");
 			older_than_interval = PG_GETARG_INTERVAL_P(1);
 			older_than_integer = -1;
@@ -211,7 +253,8 @@ drop_chunks_add_policy(PG_FUNCTION_ARGS)
 								"that have integer time dimensions"))); // <<-- time columns? open
 																		// dimensions? TODO::
 
-			/* awkward way to check if a NameStr col is null or not but did not find a better API */
+			/* TODO:: q:: awkward way to check if a NameStr col is null or not but did not find a
+			 * better API */
 			if ('\0' == *NameStr(open_dim->fd.integer_now_func) ||
 				'\0' == *NameStr(open_dim->fd.integer_now_func_schema))
 				ereport(ERROR,

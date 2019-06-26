@@ -120,8 +120,6 @@ select * from _timescaledb_catalog.dimension;
 select set_integer_now_func('test_table_int', 'dummy_now2', replace_if_exists => TRUE);
 select * from _timescaledb_catalog.dimension;
 
-select add_drop_chunks_policy('test_table_int', 42, true);
-
 
 select * from _timescaledb_config.bgw_policy_drop_chunks;
 select r.job_id,r.hypertable_id,r.older_than_interval,r.cascade from _timescaledb_config.bgw_policy_drop_chunks as r, _timescaledb_catalog.hypertable as h where r.hypertable_id=h.id and h.table_name='test_table';

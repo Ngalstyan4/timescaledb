@@ -139,7 +139,7 @@ ERROR:  relation "fake_table" does not exist at character 31
 select add_drop_chunks_policy('test_table', cascade=>true);
 ERROR:  function add_drop_chunks_policy(unknown, cascade => boolean) does not exist at character 8
 select add_drop_chunks_policy('test_table_int', INTERVAL '3 month', true);
-ERROR:  can only use "add_drop_chunks_policy" with an INTERVAL for TIMESTAMP, TIMESTAMPTZ, and DATE types
+ERROR:  interval older_than argument can only be used with hypertables that have non-integer time dimensions
 select add_drop_chunks_policy('test_table_int', 42, true);
 ERROR:  integer older_than argument can only be used with hypertables that have integer time dimensions and when integer now function is set
 \set ON_ERROR_STOP 1

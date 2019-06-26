@@ -44,6 +44,8 @@ typedef struct PartitioningInfo
 	PartitioningFunc partfunc;
 } PartitioningInfo;
 
+typedef bool (*proc_filter)(Form_pg_proc form, void *arg);
+
 extern Oid ts_partitioning_func_get_closed_default(void);
 extern bool ts_partitioning_func_is_valid(regproc funcoid, DimensionType dimtype, Oid argtype);
 
@@ -57,5 +59,6 @@ extern TSDLLEXPORT Datum ts_partitioning_func_apply(PartitioningInfo *pinfo, Dat
  */
 extern TSDLLEXPORT Datum ts_partitioning_func_apply_tuple(PartitioningInfo *pinfo, HeapTuple tuple,
 														  TupleDesc desc, bool *isnull);
-
+extern TSDLLEXPORT regproc lookup_proc_filtered(const char *schema, const char *funcname,
+												Oid *rettype, proc_filter filter, void *filter_arg);
 #endif /* TIMESCALEDB_PARTITIONING_H */

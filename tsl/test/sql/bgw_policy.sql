@@ -216,16 +216,78 @@ select check_chunk_oid(:oldest_chunk_id, :reorder_chunk_oid);
 -- Should be noop again
 select * from test_reorder(:reorder_job_id) \gset  reorder_
 
-CREATE TABLE test_table_int(time int);
+CREATE TABLE test_table_int(time bigint, junk int);
 SELECT create_hypertable('test_table_int', 'time', chunk_time_interval => 1);
+create or replace function dummy_now() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 1::BIGINT';
+create or replace function dummy_now2() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 2::BIGINT';
 
 CREATE TABLE test_table_perm(time timestamp PRIMARY KEY);
 SELECT create_hypertable('test_table_perm', 'time', chunk_time_interval => 1);
 
 \set ON_ERROR_STOP 0
--- we cannot add a drop_chunks policy on a table whose open dimension is not time
+-- we cannot add a drop_chunks policy on a table whose open dimension is not time and no now_func is set
 select add_drop_chunks_policy('test_table_int', INTERVAL '4 months', true);
 \set ON_ERROR_STOP 1
+
+INSERT INTO test_table_int VALUES (-2, -2), (-1, -1), (0,0), (1, 1), (2, 2), (3, 3);
+
+select set_integer_now_func('test_table_int', 'dummy_now');
+select * from test_table_int;
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int';
+select add_drop_chunks_policy('test_table_int', 1, true) as drop_chunks_job_id \gset
+
+-- Now simulate drop_chunks running automatically by calling it explicitly
+select test_drop_chunks(:drop_chunks_job_id);
+select * from test_table_int;
+-- Should have 4 chunks left
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset before_
+select :before_count=4;
+
+-- Make sure this second call does nothing
+select test_drop_chunks(:drop_chunks_job_id);
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset after_
+
+-- Should be true
+select :before_count=:after_count;
+
+INSERT INTO test_table_int VALUES (42, 42);
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset before_
+
+-- This call should also do nothing
+select test_drop_chunks(:drop_chunks_job_id);
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset after_
+
+-- Should be true
+select :before_count=:after_count;
+
+INSERT INTO test_table_int VALUES (-1, -1);
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset add_one_
+select :before_count+1=:add_one_count;
+select test_drop_chunks(:drop_chunks_job_id);
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset after_
+
+-- (-1,-1) was in droping range so it should be dropped by background job
+select :before_count=:after_count;
+
+select set_integer_now_func('test_table_int', 'dummy_now2', replace_if_exists=>true);
+select * from test_table_int;
+select test_drop_chunks(:drop_chunks_job_id);
+-- added one to now() so time entry with value 0 should be dropped now
+SELECT count(*) FROM _timescaledb_catalog.chunk as c, _timescaledb_catalog.hypertable as ht where c.hypertable_id = ht.id and ht.table_name='test_table_int' \gset after_
+select :before_count=:after_count+1;
+select * from test_table_int;
+
+-- make the now() function invalid -- returns INT and not BIGINT
+drop function dummy_now2();
+create or replace function dummy_now2() returns INT LANGUAGE SQL IMMUTABLE as  'SELECT 2::INT';
+
+\set ON_ERROR_STOP 0
+select test_drop_chunks(:drop_chunks_job_id);
+\set ON_ERROR_STOP 1
+
+-- todo:: See info about the failed job, it does not appear here ` select * from  _timescaledb_internal.bgw_job_stat;
+-- todo:: test cases when both partitioning function and now_func are set on the same hypertable
+select remove_drop_chunks_policy('test_table_int');
 
 \c  :TEST_DBNAME :ROLE_DEFAULT_PERM_USER_2
 \set ON_ERROR_STOP 0
@@ -236,3 +298,4 @@ select add_drop_chunks_policy('test_table_perm', INTERVAL '4 months', true);
 select remove_drop_chunks_policy('test_table');
 
 \set ON_ERROR_STOP 1
+\c :TEST_DBNAME :ROLE_DEFAULT_PERM_USER
