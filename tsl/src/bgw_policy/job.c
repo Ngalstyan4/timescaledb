@@ -11,6 +11,7 @@
 #include <catalog/namespace.h>
 #include <catalog/pg_type.h>
 #include <utils/lsyscache.h>
+#include <hypertable_cache.h>
 
 #include "bgw/timer.h"
 #include "bgw/job_stat.h"
@@ -32,6 +33,13 @@
 #include "job.h"
 #include "license.h"
 #include "reorder.h"
+#include "utils.h"
+
+//TODO:: remove later if lookup_proc_filtered is moved to smw else
+#include "partitioning.h"
+
+// TODO:: remove later if ts_integer_now_func_validate is moved smw else
+#include "drop_chunks_api.h"
 
 #define ALTER_JOB_SCHEDULE_NUM_COLS 5
 #define REORDER_SKIP_RECENT_DIM_SLICES_N 3
@@ -150,6 +158,17 @@ execute_drop_chunks_policy(int32 job_id)
 {
 	bool started = false;
 	BgwPolicyDropChunks *args;
+	int64 older_than_datum;
+	Oid table_relid;
+	Oid now_func;
+	//Q:: could factor out getting dimension type AND now_func oid into a
+	// separate function but not sure where else it would be useful
+	// there is ts_hypertable_get_time_type function that I could use for
+	// time dimension type but it would require a directFunctionCall
+	// and when getting now_func I have access to that info here anyway.
+	Hypertable *hypertable;
+	Cache *hcache;
+	Dimension *open_dim;
 
 	if (!IsTransactionOrTransactionBlock())
 	{
@@ -159,21 +178,57 @@ execute_drop_chunks_policy(int32 job_id)
 
 	/* Get the arguments from the drop_chunks_policy table */
 	args = ts_bgw_policy_drop_chunks_find_by_job(job_id);
-
+	table_relid = ts_hypertable_id_to_relid(args->fd.hypertable_id);
 	if (args == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_TS_INTERNAL_ERROR),
 				 errmsg("could not run drop_chunks policy #%d because no args in policy table",
 						job_id)));
+	// TODO for the next stage
+	if (args->fd.interval_support) {
+		ts_chunk_do_drop_chunks(table_relid,
+								IntervalPGetDatum(&args->fd.older_than_interval),
+								(Datum) 0,
+								INTERVALOID,
+								InvalidOid,
+								args->fd.cascade,
+								args->fd.cascade_to_materializations,
+								LOG);
+	}
+	else {
+		hcache = ts_hypertable_cache_pin();
+		hypertable = ts_hypertable_cache_get_entry(hcache, table_relid);
+		/* First verify that the hypertable corresponds to a valid table */
+		if (hypertable == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_TS_HYPERTABLE_NOT_EXIST),
+					errmsg("could not set integer_now function because \"%s\" is not a hypertable",
+							get_rel_name(table_relid))));
 
-	ts_chunk_do_drop_chunks(ts_hypertable_id_to_relid(args->fd.hypertable_id),
-							IntervalPGetDatum(&args->fd.older_than_interval),
-							0,
-							INTERVALOID,
-							InvalidOid,
-							args->fd.cascade,
-							args->fd.cascade_to_materializations,
-							LOG);
+		open_dim = hyperspace_get_open_dimension(hypertable->space, 0);
+
+		Assert(IS_INTEGER_TYPE(open_dim->fd.column_type));
+
+		// todo:: perhaps use FuncnameGetCandidates instead?
+		// Q:: this uniquely identifies a function right?
+		now_func = lookup_proc_filtered(NameStr(open_dim->fd.integer_now_func_schema), NameStr(open_dim->fd.integer_now_func), NULL, NULL, NULL);
+
+		older_than_datum = ts_integer_from_now_func_get_datum(args->fd.older_than_integer, ts_dimension_get_partition_type(open_dim), now_func);
+
+		/* When getting older_than_datum, we do another validation and only proceed if now_func return type is the same as time_dim_type
+		 * that is why it is safe to pass partitioning type in place of older_than_datum type.
+		 */
+		ts_chunk_do_drop_chunks(table_relid,
+										older_than_datum,
+										(Datum) 0,
+										ts_dimension_get_partition_type(open_dim),
+										InvalidOid,
+										args->fd.cascade,
+										args->fd.cascade_to_materializations,
+										LOG);
+
+		ts_cache_release(hcache);
+	}
 	elog(LOG, "completed dropping chunks");
 
 	if (started)
