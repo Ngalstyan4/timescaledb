@@ -247,6 +247,7 @@ select * from _timescaledb_catalog.dimension;
 (2 rows)
 
 create or replace function dummy_now() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 1::BIGINT';
+create or replace function dummy_now2() returns BIGINT LANGUAGE SQL IMMUTABLE as  'SELECT 1::BIGINT';
 select set_integer_now_func('test_table_int', 'dummy_now');
  set_integer_now_func 
 ----------------------
@@ -262,6 +263,19 @@ select * from _timescaledb_catalog.dimension;
 ----+---------------+-------------+--------------------------+---------+------------+--------------------------+-------------------+-------------------------+------------------+-----------------
   1 |             1 | time        | timestamp with time zone | t       |            |                          |                   |                         |                  |    604800000000
   2 |             2 | time        | bigint                   | t       |            |                          |                   | public                  | dummy_now        |               1
+(2 rows)
+
+select set_integer_now_func('test_table_int', 'dummy_now2', replace_if_exists => TRUE);
+ set_integer_now_func 
+----------------------
+ 
+(1 row)
+
+select * from _timescaledb_catalog.dimension;
+ id | hypertable_id | column_name |       column_type        | aligned | num_slices | partitioning_func_schema | partitioning_func | integer_now_func_schema | integer_now_func | interval_length 
+----+---------------+-------------+--------------------------+---------+------------+--------------------------+-------------------+-------------------------+------------------+-----------------
+  1 |             1 | time        | timestamp with time zone | t       |            |                          |                   |                         |                  |    604800000000
+  2 |             2 | time        | bigint                   | t       |            |                          |                   | public                  | dummy_now2       |               1
 (2 rows)
 
 select * from _timescaledb_config.bgw_policy_drop_chunks;

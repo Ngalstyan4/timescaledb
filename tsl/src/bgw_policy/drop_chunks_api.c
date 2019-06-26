@@ -94,6 +94,7 @@ static void ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type) {
 Datum set_integer_now_func(PG_FUNCTION_ARGS) {
 	Oid table_relid = PG_GETARG_OID(0);
 	Oid now_func_oid = PG_GETARG_OID(1);
+	bool replace_if_exists = PG_GETARG_BOOL(2);
 	Hypertable *hypertable;
 	Cache *hcache;
 	Dimension *open_dim;
@@ -116,11 +117,12 @@ Datum set_integer_now_func(PG_FUNCTION_ARGS) {
 	open_dim = hyperspace_get_open_dimension(hypertable->space, 0);
 
 	//todo:: Q:: should there be a way to remove the set function? or replace?
-	if (*NameStr(open_dim->fd.integer_now_func_schema) != '\0' || *NameStr(open_dim->fd.integer_now_func) != '\0')
-		ereport(ERROR,
-			(errcode(ERRCODE_DUPLICATE_OBJECT),
-				errmsg("integer_now_func is already set for hypertable \"%s\"",
-					get_rel_name(table_relid))));
+	if (!replace_if_exists)
+		if (*NameStr(open_dim->fd.integer_now_func_schema) != '\0' || *NameStr(open_dim->fd.integer_now_func) != '\0')
+			ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+					errmsg("integer_now_func is already set for hypertable \"%s\"",
+						get_rel_name(table_relid))));
 
 	open_dim_type =
 		ts_dimension_get_partition_type(open_dim);
