@@ -699,7 +699,9 @@ typedef enum Anum_bgw_policy_drop_chunks
 {
 	Anum_bgw_policy_drop_chunks_job_id = 1,
 	Anum_bgw_policy_drop_chunks_hypertable_id,
-	Anum_bgw_policy_drop_chunks_older_than,
+	Anum_bgw_policy_drop_chunks_interval_support,
+	Anum_bgw_policy_drop_chunks_older_than_interval,
+	Anum_bgw_policy_drop_chunks_older_than_integer,
 	Anum_bgw_policy_drop_chunks_cascade,
 	Anum_bgw_policy_drop_chunks_cascade_to_materializations,
 	_Anum_bgw_policy_drop_chunks_max,
@@ -711,7 +713,9 @@ typedef struct FormData_bgw_policy_drop_chunks
 {
 	int32 job_id;
 	int32 hypertable_id;
-	Interval older_than;
+	bool interval_support;
+	Interval older_than_interval;
+	int64 older_than_integer;
 	bool cascade;
 	bool cascade_to_materializations;
 } FormData_bgw_policy_drop_chunks;

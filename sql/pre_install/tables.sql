@@ -199,9 +199,15 @@ SELECT pg_catalog.pg_extension_config_dump('_timescaledb_config.bgw_policy_reord
 CREATE TABLE IF NOT EXISTS _timescaledb_config.bgw_policy_drop_chunks (
     job_id          		INTEGER     PRIMARY KEY REFERENCES _timescaledb_config.bgw_job(id) ON DELETE CASCADE,
     hypertable_id   		INTEGER     UNIQUE NOT NULL REFERENCES _timescaledb_catalog.hypertable(id) ON DELETE CASCADE,
-	older_than				INTERVAL    NOT NULL,
-	cascade					BOOLEAN,
-    cascade_to_materializations BOOLEAN
+    interval_support        BOOLEAN     NOT NULL,
+    older_than_interval		INTERVAL,
+    older_than_integer      BIGINT,
+	cascade					BOOLEAN     NOT NULL,
+    cascade_to_materializations BOOLEAN NOT NULL,
+    CHECK (
+        (interval_support AND older_than_interval IS NOT NULL AND older_than_integer IS NULL) OR
+        (NOT interval_support AND older_than_interval IS NULL AND older_than_integer IS NOT NULL)
+    )
 );
 SELECT pg_catalog.pg_extension_config_dump('_timescaledb_config.bgw_policy_drop_chunks', '');
 

@@ -20,7 +20,11 @@ select * from _timescaledb_config.bgw_policy_drop_chunks;
 select * from _timescaledb_config.bgw_policy_reorder;
 
 CREATE TABLE test_table(time timestamptz, junk int);
+CREATE TABLE test_table_int(time bigint, junk int);
+
 SELECT create_hypertable('test_table', 'time');
+SELECT create_hypertable('test_table_int', 'time', chunk_time_interval => 1);
+
 CREATE INDEX second_index on test_table (time);
 CREATE INDEX third_index on test_table (time);
 
@@ -59,9 +63,14 @@ select * from _timescaledb_config.bgw_job where job_type IN ('drop_chunks', 'reo
 select add_drop_chunks_policy();
 select add_drop_chunks_policy('test_table');
 select add_drop_chunks_policy(INTERVAL '3 hours');
+select add_drop_chunks_policy('test_table', INTERVAL 'haha');
+select add_drop_chunks_policy('test_table', 'haha');
+select add_drop_chunks_policy('test_table', 42);
 select add_drop_chunks_policy('fake_table', INTERVAL '3 month', true);
 select add_drop_chunks_policy('fake_table', INTERVAL '3 month');
 select add_drop_chunks_policy('test_table', cascade=>true);
+select add_drop_chunks_policy('test_table_int', INTERVAL '3 month', true);
+select add_drop_chunks_policy('test_table_int', 42, true);
 \set ON_ERROR_STOP 1
 
 select add_drop_chunks_policy('test_table', INTERVAL '3 month', true);
@@ -85,12 +94,12 @@ select add_drop_chunks_policy('test_table', INTERVAL '3 days', cascade_to_materi
 \set ON_ERROR_STOP 1
 
 select * from _timescaledb_config.bgw_policy_drop_chunks;
-select r.job_id,r.hypertable_id,r.older_than,r.cascade from _timescaledb_config.bgw_policy_drop_chunks as r, _timescaledb_catalog.hypertable as h where r.hypertable_id=h.id and h.table_name='test_table';
+select r.job_id,r.hypertable_id,r.older_than_interval,r.cascade from _timescaledb_config.bgw_policy_drop_chunks as r, _timescaledb_catalog.hypertable as h where r.hypertable_id=h.id and h.table_name='test_table';
 
 select remove_drop_chunks_policy('test_table');
 
 select * from _timescaledb_config.bgw_policy_drop_chunks;
-select r.job_id,r.hypertable_id,r.older_than,r.cascade from _timescaledb_config.bgw_policy_drop_chunks as r, _timescaledb_catalog.hypertable as h where r.hypertable_id=h.id and h.table_name='test_table';
+select r.job_id,r.hypertable_id,r.older_than_interval,r.cascade from _timescaledb_config.bgw_policy_drop_chunks as r, _timescaledb_catalog.hypertable as h where r.hypertable_id=h.id and h.table_name='test_table';
 select remove_reorder_policy('test_table');
 
 select * from _timescaledb_config.bgw_policy_reorder;
@@ -185,6 +194,7 @@ select * from _timescaledb_config.bgw_job where job_type IN ('drop_chunks');
 select * from _timescaledb_config.bgw_policy_drop_chunks;
 
 DROP TABLE test_table;
+DROP TABLE test_table_int;
 
 select * from _timescaledb_config.bgw_job where job_type IN ('drop_chunks');
 select * from _timescaledb_config.bgw_policy_drop_chunks;
