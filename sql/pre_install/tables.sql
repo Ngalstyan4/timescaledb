@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS _timescaledb_catalog.dimension (
     partitioning_func_schema    NAME     NULL,
     partitioning_func           NAME     NULL,
     -- open dimensions (e.g., time)
+    integer_now_func_schema     NAME     NULL,
+    integer_now_func            NAME     NULL,
     interval_length             BIGINT   NULL CHECK(interval_length IS NULL OR interval_length > 0),
     CHECK (
         (partitioning_func_schema IS NULL AND partitioning_func IS NULL) OR

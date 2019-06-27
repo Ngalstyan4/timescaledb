@@ -171,6 +171,8 @@ enum Anum_dimension
 	Anum_dimension_num_slices,
 	Anum_dimension_partitioning_func_schema,
 	Anum_dimension_partitioning_func,
+	Anum_dimension_integer_now_func_schema,
+	Anum_dimension_integer_now_func,
 	Anum_dimension_interval_length,
 	_Anum_dimension_max,
 };
@@ -188,6 +190,8 @@ typedef struct FormData_dimension
 	int16 num_slices;
 	NameData partitioning_func_schema;
 	NameData partitioning_func;
+	NameData integer_now_func_schema;
+	NameData integer_now_func;
 	/* open (time) columns */
 	int64 interval_length;
 } FormData_dimension;

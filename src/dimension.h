@@ -97,6 +97,10 @@ typedef struct DimensionInfo
 	int64 interval;
 	int32 num_slices;
 	regproc partitioning_func;
+	// todo:: q:: integer_now_func not needed unless we add an argument to create_hypertable
+	// currently it is nevery populated or used
+	// populating it may make code simpler in some places
+	regproc integer_now_func;
 	bool if_not_exists;
 	bool skip;
 	bool set_not_null;
