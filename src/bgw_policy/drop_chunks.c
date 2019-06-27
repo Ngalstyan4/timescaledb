@@ -23,12 +23,52 @@ static ScanTupleResult
 bgw_policy_drop_chunks_tuple_found(TupleInfo *ti, void *const data)
 {
 	BgwPolicyDropChunks **policy = data;
+	bool nulls[Natts_bgw_policy_drop_chunks];
+	Datum values[Natts_bgw_policy_drop_chunks];
+	/* cannot use STRUCT_FROM_TUPLE because some fields in the result may be NULLs*/
+	heap_deform_tuple(ti->tuple, ti->desc, values, nulls);
 
-	*policy = STRUCT_FROM_TUPLE(ti->tuple,
-								ti->mctx,
-								BgwPolicyDropChunks,
-								FormData_bgw_policy_drop_chunks);
+	*policy = MemoryContextAllocZero(ti->mctx, sizeof(BgwPolicyDropChunks));
+	Assert(!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_job_id)]);
+	(*policy)->fd.job_id =
+		DatumGetInt32(values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_job_id)]);
 
+	Assert(!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_hypertable_id)]);
+	(*policy)->fd.hypertable_id =
+		DatumGetInt32(values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_hypertable_id)]);
+
+	Assert(!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_interval_support)]);
+	(*policy)->fd.interval_support =
+		DatumGetBool(values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_interval_support)]);
+
+	if ((*policy)->fd.interval_support)
+	{
+		Assert(!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_interval)]);
+		Assert(nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)]);
+
+		(*policy)->fd.older_than_interval = *DatumGetIntervalP(
+			values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_interval)]);
+	}
+	else
+	{
+		Assert(nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_interval)]);
+		Assert(!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)]);
+
+		(*policy)->fd.older_than_integer = DatumGetInt64(
+			values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)]);
+	}
+
+	Assert(!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_cascade)]);
+	(*policy)->fd.cascade =
+		DatumGetBool(values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_cascade)]);
+
+	Assert(
+		!nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_cascade_to_materializations)]);
+	(*policy)->fd.cascade_to_materializations = DatumGetBool(
+		values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_cascade_to_materializations)]);
+
+	// Q:: why scan continue? Is it not wrong to have multiple? And even if there are multiple, this
+	// would just take the last one?
 	return SCAN_CONTINUE;
 }
 
@@ -120,8 +160,22 @@ ts_bgw_policy_drop_chunks_insert_with_relation(Relation rel, BgwPolicyDropChunks
 		Int32GetDatum(policy->fd.job_id);
 	values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_hypertable_id)] =
 		Int32GetDatum(policy->fd.hypertable_id);
-	values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than)] =
-		IntervalPGetDatum(&policy->fd.older_than);
+	values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_interval_support)] =
+		BoolGetDatum(policy->fd.interval_support);
+
+	if (policy->fd.interval_support)
+	{
+		values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_interval)] =
+			IntervalPGetDatum(&policy->fd.older_than_interval);
+		nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)] = true;
+	}
+	else
+	{
+		values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_integer)] =
+			Int64GetDatum(policy->fd.older_than_integer);
+		nulls[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_older_than_interval)] = true;
+	}
+
 	values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_cascade)] =
 		BoolGetDatum(policy->fd.cascade);
 	values[AttrNumberGetAttrOffset(Anum_bgw_policy_drop_chunks_cascade_to_materializations)] =
