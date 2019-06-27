@@ -10,6 +10,8 @@
 #include <postgres.h>
 
 /* User-facing API functions */
+extern Datum ts_integer_from_now_func_get_datum(int64 interval, Oid time_dim_type, Oid now_func);
+extern void ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type);
 extern Datum set_integer_now_func(PG_FUNCTION_ARGS);
 extern Datum drop_chunks_add_policy(PG_FUNCTION_ARGS);
 extern Datum drop_chunks_remove_policy(PG_FUNCTION_ARGS);

@@ -47,15 +47,14 @@
 	((dimtype == DIMENSION_TYPE_OPEN) ? IS_VALID_OPEN_PARTITIONING_FUNC(proform, argtype) :        \
 										IS_VALID_CLOSED_PARTITIONING_FUNC(proform, argtype))
 
-typedef bool (*proc_filter)(Form_pg_proc form, void *arg);
-
 /*
  * Find a partitioning function with a given schema and name.
  *
  * The caller can optionally pass a filter function and a type of the argument
  * that the partitioning function should take.
  */
-static regproc
+// Q:: should this be moved to utils.c since it is not specific to partitioning functions ?
+regproc
 lookup_proc_filtered(const char *schema, const char *funcname, Oid *rettype, proc_filter filter,
 					 void *filter_arg)
 {

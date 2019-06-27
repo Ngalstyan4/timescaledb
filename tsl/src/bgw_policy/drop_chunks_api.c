@@ -13,6 +13,8 @@
 #include <miscadmin.h>
 
 #include <hypertable_cache.h>
+#include <access/xact.h>
+#include <utils/snapmgr.h>
 
 #include "bgw/job.h"
 #include "bgw_policy/drop_chunks.h"
@@ -56,11 +58,38 @@
 										  Int32GetDatum(0),                                        \
 										  Float8GetDatum(0)))
 
-/* TODO:: Q:: These should probably be in its own file? We could also add a set_partitioning_func
- * helper function so such functions do not have to be specified hypertable creation time
- *  */
+/* TODO:: Q:: These should probably be in its own file? */
+Datum
+ts_integer_from_now_func_get_datum(int64 interval, Oid time_dim_type, Oid now_func)
+{
+	Datum now;
 
-static void
+	AssertArg(IS_INTEGER_TYPE(time_dim_type));
+
+	ts_integer_now_func_validate(now_func, time_dim_type);
+
+	// bgw luncher starts a transactions so here I can assume I am always inside a transaction
+	// right? no need for StartTransactionCommand();
+	/* functions in indexes may want a snapshot set */
+	// Q:: Why is there not one already?
+	PushActiveSnapshot(GetTransactionSnapshot());
+	now = OidFunctionCall0(now_func);
+	PopActiveSnapshot();
+
+	switch (time_dim_type)
+	{
+		case INT2OID:
+			return Int64GetDatum(DatumGetInt16(now) - interval);
+		case INT4OID:
+			return Int64GetDatum(DatumGetInt32(now) - interval);
+		case INT8OID:
+			return Int64GetDatum(DatumGetInt64(now) - interval);
+		default:
+			pg_unreachable();
+	}
+}
+
+void
 ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type)
 {
 	HeapTuple tuple;
@@ -85,6 +114,7 @@ ts_integer_now_func_validate(Oid now_func_oid, Oid open_dim_type)
 		 now_func->provolatile != PROVOLATILE_STABLE) ||
 		now_func->pronargs != 0)
 		// q:: todo:: do I have to ReleaseSysCache(tuple); if the next step is an error?
+		// it is done in some places and omited in others.
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("integer_now_func must take no arguments and it must be STABLE or "
